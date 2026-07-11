@@ -31,11 +31,12 @@ import {
 
 export function Sidebar() {
   const unreadCount = useInboxStore(state => state.unreadCount);
-  const { userEmail, settings, disconnect, userPlan, setUpgradeDialogOpen } = useStore();
+  const { userEmail, userName, userPicture, settings, disconnect, userPlan, setUpgradeDialogOpen } = useStore();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const senderName = settings.globalVariables?.senderName || "User";
-  const initials = senderName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() || 'U';
+  const senderName = userName || settings.globalVariables?.senderName || "User";
+  const initials = senderName.split(' ').map((n: string) => n[0]).join('').toUpperCase().substring(0, 2) || 'U';
 
   const navItems = [
     { label: "Dashboard", icon: Home, path: "/" },
@@ -157,7 +158,7 @@ export function Sidebar() {
             <div className="flex items-center justify-between px-2 py-2 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors">
               <div className="flex items-center gap-3">
                 <Avatar className="w-9 h-9">
-                  <AvatarFallback className="bg-primary/10 text-primary font-bold">{initials}</AvatarFallback>
+                  {userPicture ? <img src={userPicture} alt="Profile" className="w-full h-full object-cover rounded-full" /> : <AvatarFallback className="bg-primary/10 text-primary font-bold">{initials}</AvatarFallback>}
                 </Avatar>
                 <div className="flex flex-col">
                   <span className="text-sm font-semibold text-text leading-tight line-clamp-1">{senderName}</span>

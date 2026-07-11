@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { parseCSV } from "@/lib/csv";
 import { getAIProvider } from "@/lib/ai/aiService";
 import { Sparkles, ArrowRight, ShieldCheck } from "lucide-react";
+import premiumContactsData from "@/data/premiumContacts.json";
+import { ApiService } from "@/services/api.service";
 
 const maskEmail = (email: string) => {
   const [localPart, domain] = email.split('@');
@@ -32,8 +34,9 @@ export function Contacts() {
   const [cleanedContacts, setCleanedContacts] = useState<any[]>([]);
   const [isCleaning, setIsCleaning] = useState(false);
   const [aiError, setAIError] = useState("");
+  const [contactFilter, setContactFilter] = useState<'all' | 'my' | 'premium'>('all');
 
-  const handleAddManualContact = () => {
+  const handleAddManualContact = async () => {
     if (!newContactForm.name || !newContactForm.email) return;
     
     const existing = contacts.some(c => c.email.toLowerCase() === newContactForm.email.toLowerCase());
@@ -42,25 +45,37 @@ export function Contacts() {
       return;
     }
     
-    const names = newContactForm.name.split(' ');
-    
-    const newContact: Contact = {
-      id: Date.now(),
-      name: newContactForm.name,
-      email: newContactForm.email,
-      status: newContactForm.status as any,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      variables: {
-        firstName: names[0] || '',
-        lastName: names.slice(1).join(' ') || '',
+    try {
+      const token = localStorage.getItem('jwtToken');
+      const savedDbContact = await ApiService.post<any>('/contacts', {
+        name: newContactForm.name,
+        email: newContactForm.email,
         company: newContactForm.company,
         role: newContactForm.role
-      }
-    };
-    
-    setContacts([...contacts, newContact]);
-    setIsAddModalOpen(false);
-    setNewContactForm({ name: '', email: '', company: '', role: '', status: 'Active' });
+      }, token);
+
+      const names = newContactForm.name.split(' ');
+      const newContact: Contact = {
+        id: savedDbContact?.id || Date.now(),
+        name: newContactForm.name,
+        email: newContactForm.email,
+        status: newContactForm.status as any,
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        variables: {
+          firstName: names[0] || '',
+          lastName: names.slice(1).join(' ') || '',
+          company: newContactForm.company,
+          role: newContactForm.role
+        }
+      };
+      
+      setContacts([...contacts, newContact]);
+      setIsAddModalOpen(false);
+      setNewContactForm({ name: '', email: '', company: '', role: '', status: 'Active' });
+    } catch (e) {
+      alert("Failed to save contact to the database. It might already exist or the server is down.");
+      console.error(e);
+    }
   };
 
   const handleAIClean = async () => {
@@ -170,15 +185,24 @@ export function Contacts() {
   };
 
   const filteredContacts = useMemo(() => {
-    if (!searchQuery) return contacts;
-    const lowerQuery = searchQuery.toLowerCase();
-    return contacts.filter(
-      (c) =>
-        c.name.toLowerCase().includes(lowerQuery) ||
-        c.email.toLowerCase().includes(lowerQuery) ||
-        c.status.toLowerCase().includes(lowerQuery)
-    );
-  }, [contacts, searchQuery]);
+    let result = contacts;
+    if (contactFilter === 'my') {
+      result = result.filter(c => !c.isProtected);
+    } else if (contactFilter === 'premium') {
+      result = result.filter(c => c.isProtected);
+    }
+
+    if (searchQuery) {
+      const lowerQuery = searchQuery.toLowerCase();
+      result = result.filter(
+        (c) =>
+          c.name.toLowerCase().includes(lowerQuery) ||
+          c.email.toLowerCase().includes(lowerQuery) ||
+          c.status.toLowerCase().includes(lowerQuery)
+      );
+    }
+    return result;
+  }, [contacts, searchQuery, contactFilter]);
   return (
     <div className="flex flex-col h-full w-full bg-background relative border-r border-border min-w-[800px]">
       <Header />
@@ -232,15 +256,7 @@ export function Contacts() {
                     return;
                   }
                   
-                  const premiumContacts: Contact[] = Array.from({ length: 4000 }).map((_, i) => ({
-                    id: Date.now() + i,
-                    name: `Premium Recruiter ${i + 1}`,
-                    email: `recruiter${i + 1}@toptech.com`,
-                    status: 'Active',
-                    date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                    variables: { company: 'Top Tech', role: 'Technical Recruiter' },
-                    isProtected: true
-                  }));
+                  const premiumContacts: Contact[] = premiumContactsData as Contact[];
                   
                   setContacts([...contacts, ...premiumContacts]);
                 } else {
@@ -268,7 +284,12 @@ export function Contacts() {
 
         <div className="bg-card rounded-xl border border-border shadow-soft flex-1 flex flex-col overflow-hidden">
           <div className="p-4 border-b border-border flex items-center gap-4 bg-gray-50/50">
-            <div className="relative flex-1 max-w-sm">
+            <div className="flex bg-gray-200/50 p-1 rounded-lg border border-border">
+              <button onClick={() => setContactFilter('all')} className={cn("px-3 py-1.5 text-sm font-medium rounded-md transition-colors", contactFilter === 'all' ? 'bg-white shadow-sm text-text' : 'text-secondary hover:text-text')}>All</button>
+              <button onClick={() => setContactFilter('my')} className={cn("px-3 py-1.5 text-sm font-medium rounded-md transition-colors", contactFilter === 'my' ? 'bg-white shadow-sm text-text' : 'text-secondary hover:text-text')}>My Contacts</button>
+              <button onClick={() => setContactFilter('premium')} className={cn("px-3 py-1.5 text-sm font-medium rounded-md transition-colors", contactFilter === 'premium' ? 'bg-white shadow-sm text-text' : 'text-secondary hover:text-text')}>Recruiters</button>
+            </div>
+            <div className="relative flex-1 max-w-sm ml-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary" />
               <Input 
                 placeholder="Search contacts..." 
@@ -277,16 +298,15 @@ export function Contacts() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button variant="outline" className="bg-white border-border rounded-lg h-10 px-4 text-secondary shadow-sm">
-              <Filter className="w-4 h-4 mr-2" /> Filters
-            </Button>
           </div>
           
           <div className="flex-1 overflow-auto">
             <Table>
               <TableHeader className="bg-gray-50/50">
                 <TableRow className="border-border">
-                  <TableHead className="w-[300px] font-semibold text-secondary">Name</TableHead>
+                  <TableHead className="w-[250px] font-semibold text-secondary">Name</TableHead>
+                  <TableHead className="font-semibold text-secondary">Company</TableHead>
+                  <TableHead className="font-semibold text-secondary">Role / Type</TableHead>
                   <TableHead className="font-semibold text-secondary">Status</TableHead>
                   <TableHead className="font-semibold text-secondary text-right">Date Added</TableHead>
                 </TableRow>
@@ -294,7 +314,7 @@ export function Contacts() {
               <TableBody>
                 {filteredContacts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} className="h-32 text-center text-secondary">
+                    <TableCell colSpan={5} className="h-32 text-center text-secondary">
                       No contacts found matching "{searchQuery}".
                     </TableCell>
                   </TableRow>
@@ -311,15 +331,21 @@ export function Contacts() {
                               <span className="font-semibold text-text">{contact.name}</span>
                               {contact.isProtected && (
                                 <Badge variant="outline" className="bg-purple-50 text-purple-600 border-purple-200 text-[10px] h-4 py-0 px-1.5 flex items-center gap-1">
-                                  <ShieldCheck className="w-2.5 h-2.5" /> Protected
+                                  <ShieldCheck className="w-2.5 h-2.5" /> Premium
                                 </Badge>
                               )}
                             </div>
                             <span className="text-sm text-secondary">
-                              {contact.isProtected ? maskEmail(contact.email) : contact.email}
+                              {contact.email}
                             </span>
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-medium text-text">{contact.variables?.company || '—'}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-medium text-text">{contact.variables?.role || '—'}</span>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={cn(

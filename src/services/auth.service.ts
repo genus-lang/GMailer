@@ -17,14 +17,14 @@ export const AuthService = {
       }
 
       const redirectUrl = chrome.identity.getRedirectURL(); // e.g., https://<id>.chromiumapp.org/
-      const authUrl = `http://localhost:3000/auth/google?ext=${encodeURIComponent(redirectUrl)}`;
+      const authUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/auth/google?ext=${encodeURIComponent(redirectUrl)}`;
 
       chrome.identity.launchWebAuthFlow({
         url: authUrl,
         interactive: true
       }, async (responseUrl) => {
-        if (chrome.runtime.lastError || !responseUrl) {
-          return reject(new Error(chrome.runtime.lastError?.message || 'Authentication cancelled by user.'));
+        if ((chrome.runtime as any).lastError || !responseUrl) {
+          return reject(new Error((chrome.runtime as any).lastError?.message || 'Authentication cancelled by user.'));
         }
 
         try {

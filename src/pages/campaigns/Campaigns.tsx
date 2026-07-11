@@ -79,8 +79,8 @@ export function Campaigns() {
 
         {/* Historical Campaigns */}
         <h3 className="font-bold text-lg mb-4">Past Campaigns</h3>
-        <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-soft">
-          <table className="w-full text-left">
+        <div className="bg-card border border-border rounded-2xl overflow-auto shadow-soft">
+          <table className="w-full text-left whitespace-nowrap min-w-[600px]">
             <thead className="bg-gray-50 border-b border-border">
               <tr>
                 <th className="p-4 text-xs font-bold text-secondary uppercase tracking-wider">Campaign Name</th>
@@ -105,7 +105,7 @@ export function Campaigns() {
                         {camp.status}
                       </span>
                     </td>
-                    <td className="p-4 font-semibold text-sm">{camp.sent.toLocaleString()}</td>
+                    <td className="p-4 font-semibold text-sm">{(camp.sent || 0).toLocaleString()}</td>
                     <td className="p-4 font-semibold text-sm">{camp.openRate}</td>
                     <td className="p-4 text-sm text-secondary">{camp.date}</td>
                   </tr>
