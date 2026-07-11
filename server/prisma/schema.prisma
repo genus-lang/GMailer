@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String         @id @default(uuid())
+  name               String
+  email              String         @unique
+  picture            String?
+  googleId           String?        @unique
+  googleRefreshToken String?
+  plan               String         @default("FREE")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  subscriptions      Subscription[]
+  payments           Payment[]
+  campaigns          Campaign[]
+  contacts           Contact[]
+  templates          Template[]
+  emails             EmailQueue[]
+}
+
+model Subscription {
+  id                     String    @id @default(uuid())
+  userId                 String
+  user                   User      @relation(fields: [userId], references: [id])
+  plan                   String
+  status                 String
+  startDate              DateTime  @default(now())
+  endDate                DateTime?
+  razorpaySubscriptionId String?
+  createdAt              DateTime  @default(now())
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  orderId   String   @unique
+  paymentId String?
+  signature String?
+  amount    Int
+  currency  String   @default("INR")
+  status    String   @default("CREATED") // CREATED, COMPLETED, FAILED
+  createdAt DateTime @default(now())
+}
+
+model Contact {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  email     String
+  name      String?
+  company   String?
+  role      String?
+  tags      String[]
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, email])
+}
+
+model Template {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  name      String
+  subject   String
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Campaign {
+  id        String       @id @default(uuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+  name      String
+  status    String       @default("DRAFT") // DRAFT, RUNNING, PAUSED, COMPLETED
+  subject   String?
+  body      String?      @db.Text
+  stats     Json? // { total, sent, failed, opened }
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  emails    EmailQueue[]
+}
+
+model EmailQueue {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  toEmail    String
+  status     String   @default("PENDING") // PENDING, PROCESSING, SENT, FAILED
+  error      String?
+  variables  Json?
+  sendAt     DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

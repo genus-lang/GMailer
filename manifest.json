@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "GMailer",
+  "version": "1.0.0",
+  "description": "Mass Mailer with Gmail OAuth",
+  "action": {},
+  "icons": {
+    "128": "icon.png"
+  },
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "permissions": [
+    "identity",
+    "storage",
+    "unlimitedStorage",
+    "identity.email"
+  ],
+  "oauth2": {
+    "client_id": "933580198425-doe4ufalqg4m73qje93h5ckq1ua0o3t3.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/gmail.modify",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
+  "host_permissions": [
+    "https://www.googleapis.com/*",
+    "https://gmail.googleapis.com/*",
+    "https://api.groq.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "http://localhost:3000/*"
+  ]
+}
