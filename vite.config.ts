@@ -16,6 +16,15 @@ export default defineConfig({
   define: {
     __LIVE_RELOAD__: JSON.stringify(true),
   },
+  server: {
+    port: 5173,
+    strictPort: true,
+    ws: {
+      protocol: 'ws',
+      host: 'localhost',
+      port: 5173,
+    },
+  },
   build: {
     rollupOptions: {
       input: {

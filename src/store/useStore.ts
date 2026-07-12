@@ -338,6 +338,8 @@ export const useStore = create<GMailerState>((set, get) => ({
           id: c.id,
           name: c.name,
           status: c.status === 'RUNNING' ? 'Sending' : (c.status === 'COMPLETED' ? 'Completed' : c.status),
+          total: c.stats?.total || sentCount,
+          failed: c.stats?.failed || 0,
           sent: sentCount,
           openRate: openRate,
           date: new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -388,7 +390,7 @@ export const useStore = create<GMailerState>((set, get) => ({
         id: c.id,
         name: c.name || '',
         email: c.email,
-        status: 'Active',
+        status: 'Active' as const,
         date: new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
         variables: { company: c.company || '', role: c.role || '' },
         isProtected: false

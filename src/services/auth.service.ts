@@ -10,7 +10,7 @@ export interface UserData {
 }
 
 export const AuthService = {
-  async loginWithGoogle(): Promise<{ token: string; plan: PlanType; email?: string }> {
+  async loginWithGoogle(): Promise<{ token: string; plan: PlanType; email?: string; name?: string; picture?: string }> {
     return new Promise((resolve, reject) => {
       if (typeof chrome === 'undefined' || !chrome.identity) {
          return reject(new Error('Not running in extension environment'));

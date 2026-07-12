@@ -31,7 +31,7 @@ export function Header() {
             {isConnected ? 'Connected' : 'Disconnected'}
           </Badge>
           <span className="text-sm font-medium text-text bg-gray-50 px-3 py-1 rounded-lg border border-border">
-            {userEmail || 'Not Connected'}
+            {isConnected ? (userEmail || 'Loading Profile...') : 'Not Connected'}
           </span>
         </div>
       </div>

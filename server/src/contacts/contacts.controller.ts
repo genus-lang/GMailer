@@ -12,6 +12,11 @@ export class ContactsController {
     return this.contactsService.findAll(req.user.userId);
   }
 
+  @Post('bulk')
+  async createBulkContacts(@Req() req: any, @Body() data: any[]) {
+    return this.contactsService.createBulk(req.user.userId, data);
+  }
+
   @Post()
   async createContact(@Req() req: any, @Body() data: any) {
     return this.contactsService.create(req.user.userId, data);

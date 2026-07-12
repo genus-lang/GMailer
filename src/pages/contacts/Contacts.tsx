@@ -23,7 +23,7 @@ const maskEmail = (email: string) => {
 };
 
 export function Contacts() {
-  const { contacts, setContacts, searchQuery, setSearchQuery, settings, userPlan, setUpgradeDialogOpen } = useStore();
+  const { contacts, setContacts, searchQuery, setSearchQuery, settings, userPlan, setUpgradeDialogOpen, jwtToken } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
@@ -46,13 +46,12 @@ export function Contacts() {
     }
     
     try {
-      const token = localStorage.getItem('jwtToken');
       const savedDbContact = await ApiService.post<any>('/contacts', {
         name: newContactForm.name,
         email: newContactForm.email,
         company: newContactForm.company,
         role: newContactForm.role
-      }, token);
+      }, jwtToken);
 
       const names = newContactForm.name.split(' ');
       const newContact: Contact = {
@@ -98,7 +97,7 @@ export function Contacts() {
     }
   };
 
-  const acceptAIContacts = () => {
+  const acceptAIContacts = async () => {
     const existingEmails = new Set(contacts.map(c => c.email.toLowerCase()));
     
     const validNewContacts = cleanedContacts.filter(c => {
@@ -120,10 +119,22 @@ export function Contacts() {
         role: c.role
       }
     }));
-    setContacts([...contacts, ...newContacts]);
-    setIsAIModalOpen(false);
-    setRawAIText("");
-    setCleanedContacts([]);
+    try {
+      await ApiService.post<any>('/contacts/bulk', newContacts.map(c => ({
+        name: c.name,
+        email: c.email,
+        company: c.variables?.company,
+        role: c.variables?.role
+      })), jwtToken);
+      
+      setContacts([...contacts, ...newContacts]);
+      setIsAIModalOpen(false);
+      setRawAIText("");
+      setCleanedContacts([]);
+    } catch (e) {
+      alert("Failed to save AI contacts to database.");
+      console.error(e);
+    }
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,7 +163,19 @@ export function Contacts() {
         return;
       }
       
-      setContacts([...contacts, ...uniqueNewContacts]);
+      try {
+        await ApiService.post<any>('/contacts/bulk', uniqueNewContacts.map(c => ({
+          name: c.name,
+          email: c.email,
+          company: c.variables?.company,
+          role: c.variables?.role
+        })), jwtToken);
+
+        setContacts([...contacts, ...uniqueNewContacts]);
+      } catch (e) {
+        alert("Failed to save imported CSV contacts to database.");
+        console.error(e);
+      }
     }
     
     // Reset input
