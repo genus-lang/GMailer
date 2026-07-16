@@ -18,11 +18,12 @@ export const PaymentService = {
     return await ApiService.post('/payment/verify', paymentDetails, token);
   },
 
-  async openRazorpayCheckout(order: any, token: string, user: any): Promise<boolean> {
-    if (order.orderId && order.key) {
+  async openCashfreeCheckout(order: any, token: string, user: any): Promise<boolean> {
+    if (order.orderId && order.paymentSessionId) {
       const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       const returnUrl = encodeURIComponent(window.location.href);
-      const checkoutUrl = baseUrl + '/checkout?orderId=' + order.orderId + '&amount=' + order.amount + '&key=' + order.key + '&token=' + token + '&returnUrl=' + returnUrl;
+      // We pass the paymentSessionId in the 'key' parameter to the backend checkout route
+      const checkoutUrl = baseUrl + '/checkout?orderId=' + order.orderId + '&amount=' + order.amount + '&key=' + order.paymentSessionId + '&token=' + token + '&returnUrl=' + returnUrl;
       
       if (typeof chrome !== 'undefined' && chrome.tabs) {
         chrome.tabs.create({ url: checkoutUrl });

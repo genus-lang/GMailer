@@ -22,7 +22,7 @@ export const Pricing = () => {
     try {
       const order = await PaymentService.createOrder(planToUpgrade, jwtToken);
       
-      const success = await PaymentService.openRazorpayCheckout(
+      const success = await PaymentService.openCashfreeCheckout(
         order, 
         jwtToken, 
         { name: 'User', email: userEmail }

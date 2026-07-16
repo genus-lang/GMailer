@@ -15,13 +15,11 @@ export class PaymentController {
   @Post('verify')
   async verifyPayment(
     @Req() req: any,
-    @Body() body: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string },
+    @Body() body: { order_id: string },
   ) {
     return this.paymentService.verifyPayment(
       req.user.userId,
-      body.razorpay_payment_id,
-      body.razorpay_order_id,
-      body.razorpay_signature,
+      body.order_id,
     );
   }
 }

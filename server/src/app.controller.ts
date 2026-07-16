@@ -112,83 +112,53 @@ export class AppController {
         <p style="margin-bottom:0;">Redirecting you back to GMailer+...</p>
     </div>
 
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
     <script>
+        // Use sandbox by default for now
+        const cashfree = Cashfree({
+            mode: "sandbox" // change to "production" when live
+        });
+
         setTimeout(() => {
-            const options = {
-                key: "${key}",
-                amount: "${amount}",
-                currency: "INR",
-                name: "GMailer+",
-                description: "Upgrade to GMailer+ Pro Plan",
-                order_id: "${orderId}",
-                config: {
-                    display: {
-                        blocks: {
-                            upi: {
-                                name: "Pay via UPI",
-                                instruments: [
-                                    { method: "upi" }
-                                ]
-                            },
-                            other: {
-                                name: "Other Payment Modes",
-                                instruments: [
-                                    { method: "card" },
-                                    { method: "netbanking" },
-                                    { method: "wallet" }
-                                ]
-                            }
-                        },
-                        sequence: ["block.upi", "block.other"]
-                    }
-                },
-                handler: async function (response) {
+            let checkoutOptions = {
+                paymentSessionId: "${key}", // we pass paymentSessionId in the 'key' param for simplicity or we can update it
+                redirectTarget: "_self"
+            };
+
+            cashfree.checkout(checkoutOptions).then((result) => {
+                if(result.error){
+                    document.querySelector('#loading-container h1').innerText = "Payment Cancelled";
+                    document.querySelector('#loading-container p').innerText = result.error.message;
+                    document.querySelector('.loader').style.display = 'none';
+                }
+                if(result.redirect){
+                    console.log("Redirection")
+                }
+                if(result.paymentDetails){
                     document.getElementById('loading-container').style.display = 'none';
                     document.getElementById('success-container').style.display = 'block';
                     
                     try {
-                        await fetch('/payment/verify', {
+                        fetch('/payment/verify', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
                                 'Authorization': 'Bearer ${token}'
                             },
                             body: JSON.stringify({
-                                razorpay_payment_id: response.razorpay_payment_id,
-                                razorpay_order_id: response.razorpay_order_id,
-                                razorpay_signature: response.razorpay_signature
+                                order_id: "${orderId}"
                             })
+                        }).then(() => {
+                            setTimeout(() => {
+                                window.close();
+                                document.querySelector('#success-container p').innerText = "Payment complete! You can safely close this tab and return to the GMailer extension.";
+                            }, 2000);
                         });
-                        
-                        // Wait briefly so user sees the success screen
-                        setTimeout(() => {
-                            window.close();
-                            // In case window.close() is blocked by browser, change text
-                            document.querySelector('#success-container p').innerText = "Payment complete! You can safely close this tab and return to the GMailer extension.";
-                        }, 2000);
                     } catch (e) {
                         console.error(e);
                     }
-                },
-                theme: {
-                    color: "#4f46e5"
-                },
-                modal: {
-                    ondismiss: function() {
-                        // User closed the modal
-                        document.querySelector('#loading-container h1').innerText = "Payment Cancelled";
-                        document.querySelector('#loading-container p').innerText = "You may close this window.";
-                        document.querySelector('.loader').style.display = 'none';
-                    }
                 }
-            };
-
-            const rzp = new Razorpay(options);
-            rzp.on('payment.failed', function (response) {
-                alert("Payment failed: " + response.error.description);
             });
-            rzp.open();
         }, 1000);
     </script>
 </body>

@@ -1,77 +1,102 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import * as crypto from 'crypto';
-import Razorpay = require('razorpay');
 
 @Injectable()
 export class PaymentService {
-  private razorpay: any;
+  constructor(private readonly prisma: PrismaService) {}
 
-  constructor(private readonly prisma: PrismaService) {
-    this.razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID || '',
-      key_secret: process.env.RAZORPAY_KEY_SECRET || '',
-    });
+  private getBaseUrl() {
+    return process.env.CASHFREE_ENVIRONMENT === 'PRODUCTION' 
+      ? 'https://api.cashfree.com/pg'
+      : 'https://sandbox.cashfree.com/pg';
+  }
+
+  private getHeaders() {
+    return {
+      'x-client-id': process.env.CASHFREE_APP_ID || '',
+      'x-client-secret': process.env.CASHFREE_SECRET_KEY || '',
+      'x-api-version': '2023-08-01',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
   }
 
   async createOrder(userId: string, plan: string) {
     let amount = 0;
     if (plan === 'PLUS' || plan === 'PRO') {
-      amount = 2500; // 25 INR in paise
+      amount = 25; // ₹25
     } else if (plan === 'MAX' || plan === 'BUSINESS') {
-      amount = 9900; // 99 INR in paise
+      amount = 99; // ₹99
     } else {
       throw new BadRequestException('Invalid plan for order creation');
     }
 
-    const options = {
-      amount: amount,
-      currency: 'INR',
-      receipt: `rcpt_${userId.substring(0, 8)}_${Date.now()}`,
-    };
+    const orderId = `order_${userId.substring(0, 8)}_${Date.now()}`;
 
     try {
-      const order = await this.razorpay.orders.create(options);
+      const response = await fetch(`${this.getBaseUrl()}/orders`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({
+          order_id: orderId,
+          order_amount: amount,
+          order_currency: 'INR',
+          customer_details: {
+            customer_id: userId,
+            customer_name: 'GMailer User',
+            customer_email: 'user@example.com',
+            customer_phone: '9999999999' // Cashfree requires a phone number for most methods
+          },
+          order_meta: {
+            return_url: `${process.env.VITE_API_URL || 'http://localhost:3000'}/checkout?order_id={order_id}`
+          }
+        })
+      });
+
+      const orderData = await response.json();
+      if (!response.ok) {
+        console.error('Cashfree Order Error:', orderData);
+        throw new BadRequestException('Failed to create Cashfree order');
+      }
       
       await this.prisma.payment.create({
         data: {
           userId: userId,
-          orderId: order.id,
-          amount: amount,
+          orderId: orderId,
+          amount: amount * 100, // Store in paise for backwards compatibility
           status: 'CREATED',
         }
       });
 
       return {
-        orderId: order.id,
-        amount: order.amount,
-        currency: order.currency,
-        key: process.env.RAZORPAY_KEY_ID,
+        orderId: orderId,
+        paymentSessionId: orderData.payment_session_id,
+        amount: amount,
+        currency: 'INR',
       };
     } catch (error: any) {
-      console.error('Razorpay Error:', error);
-      throw new BadRequestException('Failed to create Razorpay order');
+      console.error('Cashfree Error:', error);
+      throw new BadRequestException('Failed to create Cashfree order');
     }
   }
 
-  async verifyPayment(userId: string, paymentId: string, orderId: string, signature: string) {
-    const secret = process.env.RAZORPAY_KEY_SECRET || '';
-    
-    const generatedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(orderId + '|' + paymentId)
-      .digest('hex');
+  async verifyPayment(userId: string, orderId: string) {
+    // With Cashfree, we query their API to check if the order was paid securely
+    const response = await fetch(`${this.getBaseUrl()}/orders/${orderId}`, {
+      method: 'GET',
+      headers: this.getHeaders()
+    });
 
-    if (generatedSignature !== signature && !paymentId.startsWith('mock_pay_')) {
-      throw new BadRequestException('Invalid payment signature');
+    const orderData = await response.json();
+
+    if (!response.ok || orderData.order_status !== 'PAID') {
+      throw new BadRequestException('Payment not completed or invalid');
     }
 
     // Mark payment as successful
     const payment = await this.prisma.payment.update({
       where: { orderId: orderId },
       data: {
-        paymentId: paymentId,
-        signature: signature,
         status: 'COMPLETED',
       },
     });
