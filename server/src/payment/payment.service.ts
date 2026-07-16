@@ -46,6 +46,7 @@ export class PaymentService {
             customer_name: 'GMailer User',
             customer_email: 'user@example.com',
             customer_phone: '9999999999' // Cashfree requires a phone number for most methods
+          },
           order_meta: {
             return_url: `${process.env.CASHFREE_ENVIRONMENT === 'PRODUCTION' ? 'https://gmailer-3zlj.onrender.com' : 'http://localhost:3000'}/checkout?order_id={order_id}`
           }
