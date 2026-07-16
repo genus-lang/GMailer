@@ -114,9 +114,8 @@ export class AppController {
 
     <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
     <script>
-        // Use sandbox by default for now
         const cashfree = Cashfree({
-            mode: "sandbox" // change to "production" when live
+            mode: "${process.env.CASHFREE_ENVIRONMENT === 'PRODUCTION' ? 'production' : 'sandbox'}"
         });
 
         setTimeout(() => {
