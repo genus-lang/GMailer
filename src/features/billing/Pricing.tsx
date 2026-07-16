@@ -32,6 +32,14 @@ export const Pricing = () => {
     try {
       const order = await PaymentService.createOrder(planToUpgrade, jwtToken);
       
+      if (order.dummySuccess) {
+        if (popup) popup.close();
+        await refreshPlan();
+        setLoadingPlan(null);
+        alert(`Successfully upgraded to ${planToUpgrade} plan! (Dummy Flow)`);
+        return;
+      }
+
       if (!order.orderId || !order.paymentSessionId) {
         throw new Error("Invalid response from payment server");
       }

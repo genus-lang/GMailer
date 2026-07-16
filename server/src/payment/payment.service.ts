@@ -22,62 +22,34 @@ export class PaymentService {
   }
 
   async createOrder(userId: string, plan: string) {
-    let amount = 0;
-    if (plan === 'PLUS' || plan === 'PRO') {
-      amount = 25; // ₹25
-    } else if (plan === 'MAX' || plan === 'BUSINESS') {
-      amount = 99; // ₹99
-    } else {
+    if (plan !== 'PLUS' && plan !== 'PRO' && plan !== 'MAX' && plan !== 'BUSINESS') {
       throw new BadRequestException('Invalid plan for order creation');
     }
 
-    const orderId = `order_${userId.substring(0, 8)}_${Date.now()}`;
+    const orderId = `dummy_order_${userId.substring(0, 8)}_${Date.now()}`;
 
-    try {
-      const response = await fetch(`${this.getBaseUrl()}/orders`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({
-          order_id: orderId,
-          order_amount: amount,
-          order_currency: 'INR',
-          customer_details: {
-            customer_id: userId,
-            customer_name: 'GMailer User',
-            customer_email: 'user@example.com',
-            customer_phone: '9999999999' // Cashfree requires a phone number for most methods
-          },
-          order_meta: {
-            return_url: `${process.env.CASHFREE_ENVIRONMENT === 'PRODUCTION' ? 'https://gmailer-3zlj.onrender.com' : 'http://localhost:3000'}/checkout?order_id={order_id}`
-          }
-        })
-      });
+    // DUMMY FLOW: Instantly upgrade the user
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { plan: plan }
+    });
 
-      const orderData = await response.json();
-      if (!response.ok) {
-        console.error('Cashfree Order Error:', orderData);
-        throw new BadRequestException('Failed to create Cashfree order');
-      }
-      
-      await this.prisma.payment.create({
-        data: {
-          userId: userId,
-          orderId: orderId,
-          amount: amount * 100, // Store in paise for backwards compatibility
-          status: 'CREATED',
-        }
-      });
-
-      return {
+    // Record dummy payment
+    await this.prisma.payment.create({
+      data: {
+        userId: userId,
         orderId: orderId,
-        paymentSessionId: orderData.payment_session_id,
-        amount: amount,
-        currency: 'INR',
-      };
-    } catch (error: any) {
-      console.error('Cashfree Error:', error);
-      throw new BadRequestException('Failed to create Cashfree order');
-    }
+        amount: 0, 
+        status: 'COMPLETED',
+      }
+    });
+
+    return {
+      orderId: orderId,
+      dummySuccess: true,
+      amount: 0,
+      currency: 'INR',
+    };
   }
 
   async verifyPayment(userId: string, orderId: string) {
