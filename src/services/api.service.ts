@@ -16,7 +16,12 @@ export const ApiService = {
     });
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`);
+      let errorMsg = response.statusText;
+      try {
+        const errorData = await response.json();
+        errorMsg = errorData.message || errorData.error || response.statusText;
+      } catch (e) {}
+      throw new Error(`API Error: ${errorMsg}`);
     }
 
     return await response.json();
@@ -37,7 +42,12 @@ export const ApiService = {
     });
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`);
+      let errorMsg = response.statusText;
+      try {
+        const errorData = await response.json();
+        errorMsg = errorData.message || errorData.error || response.statusText;
+      } catch (e) {}
+      throw new Error(`API Error: ${errorMsg}`);
     }
 
     return await response.json();
