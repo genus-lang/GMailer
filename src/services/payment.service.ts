@@ -18,7 +18,7 @@ export const PaymentService = {
     return await ApiService.post('/payment/verify', paymentDetails, token);
   },
 
-  async openCashfreeCheckout(order: any, token: string, user: any): Promise<boolean> {
+  async openCashfreeCheckout(order: any, token: string, user: any, popup?: Window | null): Promise<boolean> {
     if (order.orderId && order.paymentSessionId) {
       const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       const returnUrl = encodeURIComponent(window.location.href);
@@ -27,6 +27,9 @@ export const PaymentService = {
       
       if (typeof chrome !== 'undefined' && chrome.tabs) {
         chrome.tabs.create({ url: checkoutUrl });
+        if (popup) popup.close(); // Close the blank popup if we successfully used chrome.tabs
+      } else if (popup) {
+        popup.location.href = checkoutUrl;
       } else {
         window.open(checkoutUrl, '_blank', 'width=500,height=700,left=100,top=100');
       }

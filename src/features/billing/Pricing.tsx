@@ -19,13 +19,28 @@ export const Pricing = () => {
     
     setLoadingPlan(planToUpgrade);
     setError(null);
+    
+    // Open a blank popup synchronously to bypass popup blockers (if not in extension context)
+    let popup: Window | null = null;
+    if (typeof chrome === 'undefined' || !chrome.tabs) {
+      popup = window.open('', '_blank', 'width=500,height=700,left=100,top=100');
+      if (popup) {
+        popup.document.write('Loading secure payment gateway...');
+      }
+    }
+
     try {
       const order = await PaymentService.createOrder(planToUpgrade, jwtToken);
       
+      if (!order.orderId || !order.paymentSessionId) {
+        throw new Error("Invalid response from payment server");
+      }
+
       const success = await PaymentService.openCashfreeCheckout(
         order, 
         jwtToken, 
-        { name: 'User', email: userEmail }
+        { name: 'User', email: userEmail },
+        popup
       );
       
       if (success) {
@@ -38,6 +53,7 @@ export const Pricing = () => {
       console.error('Payment flow failed:', err);
       setError(err.message || 'Failed to initiate payment. Please try again.');
       setLoadingPlan(null);
+      if (popup) popup.close();
     }
   };
 
