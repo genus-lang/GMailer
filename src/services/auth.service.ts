@@ -37,12 +37,7 @@ export const AuthService = {
 
           chrome.storage.local.set({ jwtToken });
 
-          try {
-            const userData = await ApiService.get<UserData>('/auth/me', jwtToken);
-            resolve({ token: jwtToken, plan: userData.plan || 'FREE', email: userData.email });
-          } catch (e) {
-            resolve({ token: jwtToken, plan: 'FREE', email: 'user@gmail.com' });
-          }
+          resolve({ token: jwtToken, plan: 'FREE' });
         } catch (err: any) {
           reject(new Error(err.message));
         }

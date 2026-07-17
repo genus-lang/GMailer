@@ -322,12 +322,18 @@ export const useStore = create<GMailerState>((set, get) => ({
          return;
       }
 
-      // 2. Fetch Campaigns
-      const campaigns = await ApiService.get<any[]>('/campaigns', token);
+      // 2. Fetch Additional Data Concurrently to speed up login
+      const [campaigns, rawContacts, builtinTemplates, customTemplates] = await Promise.all([
+        ApiService.get<any[]>('/campaigns', token).catch(() => []),
+        ApiService.get<any[]>('/contacts', token).catch(() => []),
+        ApiService.get<any[]>('/templates/builtin', token).catch(() => []),
+        ApiService.get<any[]>('/templates', token).catch(() => [])
+      ]);
+
       // Determine if there is an active running campaign
-      const active = campaigns.find(c => c.status === 'RUNNING');
+      const active = campaigns.find((c: any) => c.status === 'RUNNING');
       
-      const mappedCampaigns = campaigns.map(c => {
+      const mappedCampaigns = campaigns.map((c: any) => {
         let sentCount = c.stats?.sent || 0;
         if (c.emails && Array.isArray(c.emails)) {
            sentCount = c.emails.filter((e: any) => e.status === 'SENT').length;
@@ -372,7 +378,7 @@ export const useStore = create<GMailerState>((set, get) => ({
 
       // Populate sentHistory from all campaign emails
       const historyItems: any[] = [];
-      campaigns.forEach(c => {
+      campaigns.forEach((c: any) => {
         if (c.emails && Array.isArray(c.emails)) {
           c.emails.filter((e: any) => e.status === 'SENT').forEach((e: any) => {
             historyItems.push({
@@ -390,9 +396,8 @@ export const useStore = create<GMailerState>((set, get) => ({
       });
       set({ sentHistory: historyItems });
 
-      // 3. Fetch Contacts
-      const rawContacts = await ApiService.get<any[]>('/contacts', token);
-      const mappedContacts = rawContacts.map(c => ({
+      // 3. Map Contacts
+      const mappedContacts = rawContacts.map((c: any) => ({
         id: c.id,
         name: c.name || '',
         email: c.email,
@@ -403,18 +408,10 @@ export const useStore = create<GMailerState>((set, get) => ({
       }));
       set({ contacts: mappedContacts });
 
-      // 4. Fetch Templates (if template module is built)
-      try {
-        const builtinTemplates = await ApiService.get<any[]>('/templates/builtin', token);
-        set({ builtinTemplates: builtinTemplates || [] });
-        
-        const customTemplates = await ApiService.get<any[]>('/templates', token);
-        if (customTemplates && Array.isArray(customTemplates)) {
-          set({ templates: customTemplates });
-        }
-      } catch (e) {
-        console.error("Failed to fetch templates", e);
-        set({ builtinTemplates: [] });
+      // 4. Set Templates
+      set({ builtinTemplates: builtinTemplates || [] });
+      if (customTemplates && Array.isArray(customTemplates)) {
+        set({ templates: customTemplates });
       }
 
     } catch (e) {
