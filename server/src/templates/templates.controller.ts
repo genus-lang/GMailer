@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, UseGuards, Req } from '@nestjs/common';
 import { TemplatesService } from './templates.service';
 import { AuthGuard } from '@nestjs/passport';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,5 +20,20 @@ export class TemplatesController {
     
     const plan = user?.plan || 'FREE';
     return this.templatesService.getBuiltinTemplates(plan);
+  }
+
+  @Get()
+  async getCustomTemplates(@Req() req: any) {
+    return this.templatesService.findAllCustom(req.user.userId);
+  }
+
+  @Post()
+  async upsertCustomTemplate(@Req() req: any, @Body() body: any) {
+    return this.templatesService.upsertCustom(req.user.userId, body);
+  }
+
+  @Delete(':id')
+  async deleteCustomTemplate(@Req() req: any, @Param('id') id: string) {
+    return this.templatesService.deleteCustom(req.user.userId, id);
   }
 }

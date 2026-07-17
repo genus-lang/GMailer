@@ -402,8 +402,13 @@ export const useStore = create<GMailerState>((set, get) => ({
       try {
         const builtinTemplates = await ApiService.get<any[]>('/templates/builtin', token);
         set({ builtinTemplates: builtinTemplates || [] });
+        
+        const customTemplates = await ApiService.get<any[]>('/templates', token);
+        if (customTemplates && Array.isArray(customTemplates)) {
+          set({ templates: customTemplates });
+        }
       } catch (e) {
-        console.error("Failed to fetch builtin templates", e);
+        console.error("Failed to fetch templates", e);
         set({ builtinTemplates: [] });
       }
 
@@ -449,7 +454,10 @@ export const useStore = create<GMailerState>((set, get) => ({
         ? state.templates.map(t => t.id === template.id ? newTemplate : t)
         : [...state.templates, newTemplate];
       
-      // TODO: Call Backend ApiService.post('/templates', newTemplate) here
+      const token = localStorage.getItem('token');
+      if (token) {
+        ApiService.post('/templates', newTemplate, token).catch(e => console.error("Failed to save template to backend", e));
+      }
       
       return { templates: newTemplates };
     });
@@ -457,7 +465,10 @@ export const useStore = create<GMailerState>((set, get) => ({
   deleteTemplate: (id) => {
     set((state) => {
       const newTemplates = state.templates.filter(t => t.id !== id);
-      // TODO: Call Backend ApiService.delete('/templates/' + id) here
+      const token = localStorage.getItem('token');
+      if (token) {
+        ApiService.delete('/templates/' + id, token).catch(e => console.error("Failed to delete template from backend", e));
+      }
       return { templates: newTemplates };
     });
   },
