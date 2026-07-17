@@ -40,9 +40,13 @@ export class CampaignsService {
     });
 
     if (recipients && Array.isArray(recipients)) {
-      // Strictly prevent sending duplicate emails to the same contact globally
+      // Strictly prevent sending duplicate emails to the same contact if already sent or in progress
       const pastEmails = await this.prisma.emailQueue.findMany({
-        where: { userId, toEmail: { in: recipients } },
+        where: { 
+          userId, 
+          toEmail: { in: recipients },
+          status: { in: ['SENT', 'PROCESSING', 'PENDING'] }
+        },
         select: { toEmail: true }
       });
       const sentBefore = new Set(pastEmails.map(e => e.toEmail));
