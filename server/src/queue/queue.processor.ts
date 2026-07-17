@@ -16,7 +16,7 @@ export class EmailQueueProcessor extends WorkerHost {
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
-    const { emailQueueId, toEmail, subject, body, userId } = job.data;
+    const { emailQueueId, toEmail, subject, body, userId, attachmentPath } = job.data;
     
     this.logger.log(`Processing job ${job.id} for email ${toEmail}`);
 
@@ -47,6 +47,7 @@ export class EmailQueueProcessor extends WorkerHost {
         toEmail,
         subject,
         body,
+        attachmentPath,
       );
 
       // 5. Mark as sent

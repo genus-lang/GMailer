@@ -86,6 +86,7 @@ model Campaign {
   status    String       @default("DRAFT") // DRAFT, RUNNING, PAUSED, COMPLETED
   subject   String?
   body      String?      @db.Text
+  attachmentPath String? // Path to the uploaded PDF file
   stats     Json? // { total, sent, failed, opened }
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
@@ -101,6 +102,7 @@ model EmailQueue {
   toEmail    String
   status     String   @default("PENDING") // PENDING, PROCESSING, SENT, FAILED
   error      String?
+  attachmentPath String?
   variables  Json?
   sendAt     DateTime @default(now())
   createdAt  DateTime @default(now())

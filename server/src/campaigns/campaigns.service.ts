@@ -25,7 +25,7 @@ export class CampaignsService {
   }
 
   async create(userId: string, data: any) {
-    const { name, subject, body, recipients } = data; // recipients is array of emails
+    const { name, subject, body, recipients, attachmentPath } = data; // recipients is array of emails
 
     const campaign = await this.prisma.campaign.create({
       data: {
@@ -33,6 +33,7 @@ export class CampaignsService {
         name,
         subject,
         body,
+        attachmentPath,
         status: 'RUNNING',
         stats: { total: recipients?.length || 0, sent: 0, failed: 0, opened: 0 },
       },
@@ -63,6 +64,7 @@ export class CampaignsService {
           email,
           subject,
           body,
+          attachmentPath
         );
       }
     }

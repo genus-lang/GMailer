@@ -18,6 +18,7 @@ export class QueueService {
     toEmail: string,
     subject: string,
     body: string,
+    attachmentPath?: string,
   ) {
     // 1. Create DB Record
     const emailQueueRecord = await this.prisma.emailQueue.create({
@@ -25,6 +26,7 @@ export class QueueService {
         campaignId,
         userId,
         toEmail,
+        attachmentPath,
         status: 'PENDING',
       },
     });
@@ -38,6 +40,7 @@ export class QueueService {
         toEmail,
         subject,
         body,
+        attachmentPath,
       },
       {
         attempts: 3,

@@ -1,6 +1,9 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Req, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
 import { AuthGuard } from '@nestjs/passport';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 
 @Controller('campaigns')
 @UseGuards(AuthGuard('jwt'))
@@ -20,5 +23,32 @@ export class CampaignsController {
   @Get(':id')
   async getCampaign(@Req() req: any, @Param('id') id: string) {
     return this.campaignsService.findOne(req.user.userId, id);
+  }
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: './uploads',
+      filename: (req: any, file: any, cb: any) => {
+        const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+        cb(null, `${randomName}${extname(file.originalname)}`);
+      }
+    }),
+    fileFilter: (req: any, file: any, cb: any) => {
+      if (file.mimetype === 'application/pdf') {
+        cb(null, true);
+      } else {
+        cb(new Error('Only PDF files are allowed'), false);
+      }
+    }
+  }))
+  async uploadFile(@Req() req: any, @UploadedFile() file: any) {
+    if (!file) {
+      throw new BadRequestException('File is required and must be a PDF');
+    }
+    return {
+      success: true,
+      path: file.path // e.g., 'uploads/xxxx.pdf'
+    };
   }
 }

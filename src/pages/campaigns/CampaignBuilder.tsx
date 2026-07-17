@@ -9,6 +9,7 @@ import { ChevronRight, ArrowLeft, Sparkles, Building2, List, FileText } from "lu
 import { renderTemplate } from "@/background/templateEngine"; 
 import { getAIProvider } from "@/lib/ai/aiService";
 import { AIActionDialog } from "@/components/ui/AIActionDialog";
+import { ApiService } from "@/services/api.service";
 
 export function CampaignBuilder() {
   const navigate = useNavigate();
@@ -25,6 +26,9 @@ export function CampaignBuilder() {
   const [body, setBody] = useState("");
   const [minDelay, setMinDelay] = useState(settings.minDelay || 20);
   const [maxDelay, setMaxDelay] = useState(settings.maxDelay || 40);
+  
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const [selectedContactIds, setSelectedContactIds] = useState<Set<number>>(new Set(contacts.map(c => c.id)));
 
@@ -112,6 +116,25 @@ export function CampaignBuilder() {
       }
     }
 
+    setIsUploading(true);
+    let uploadedPath = null;
+    try {
+      if (attachmentFile) {
+        const formData = new FormData();
+        formData.append('file', attachmentFile);
+        const token = localStorage.getItem('token');
+        const res = await ApiService.upload<any>('/campaigns/upload', formData, token);
+        if (res && res.path) {
+          uploadedPath = res.path;
+        }
+      }
+    } catch (e) {
+      console.error("Upload failed", e);
+      alert("Failed to upload PDF attachment.");
+      setIsUploading(false);
+      return;
+    }
+
     // Build the signature with global variables already substituted
     const signatureRendered = settings.signature
       ? renderTemplate(settings.signature, settings.globalVariables || {})
@@ -124,9 +147,11 @@ export function CampaignBuilder() {
       bodyTemplate: signatureRendered ? `${body}\n\n${signatureRendered}` : body,
       minDelay,
       maxDelay,
-      recipients: uniqueRecipients
+      recipients: uniqueRecipients,
+      attachmentPath: uploadedPath
     });
 
+    setIsUploading(false);
     navigate("/");
   };
 
@@ -382,6 +407,19 @@ export function CampaignBuilder() {
                   value={body}
                   onChange={(e: any) => setBody(e.target.value)}
                 />
+
+                <div className="flex flex-col gap-2 p-3 bg-gray-50 border border-border rounded-md">
+                  <label className="text-sm font-semibold text-secondary flex items-center gap-2">
+                    <FileText className="w-4 h-4" /> Attach PDF Resume
+                  </label>
+                  <input 
+                    type="file" 
+                    accept="application/pdf"
+                    className="text-sm file:mr-4 file:py-1 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                    onChange={e => setAttachmentFile(e.target.files?.[0] || null)}
+                  />
+                  {attachmentFile && <span className="text-xs text-green-600 font-medium">Selected: {attachmentFile.name}</span>}
+                </div>
               </div>
               <div className="flex gap-4 mt-4">
                 <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
@@ -456,7 +494,9 @@ export function CampaignBuilder() {
               >
                 Schedule Campaign
               </Button>
-              <Button onClick={handleStart} className="bg-success text-white hover:bg-success/90">Start Campaign Now</Button>
+              <Button onClick={handleStart} disabled={isUploading} className="bg-success text-white hover:bg-success/90">
+                {isUploading ? "Uploading..." : "Start Campaign Now"}
+              </Button>
             </div>
           </div>
         )}

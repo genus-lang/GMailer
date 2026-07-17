@@ -254,7 +254,8 @@ export const useStore = create<GMailerState>((set, get) => ({
         name: payload.name,
         subject: payload.subject,
         body: payload.body || payload.bodyTemplate,
-        recipients: payload.recipients.map((r: any) => r.email)
+        recipients: payload.recipients.map((r: any) => r.email),
+        attachmentPath: payload.attachmentPath
       }, jwtToken);
 
       // 2. Set UI Active Campaign State
