@@ -485,9 +485,8 @@ export const useStore = create<GMailerState>((set, get) => ({
   updateSettings: (newSettings) => {
     set((state) => {
       const updated = { ...state.settings, ...newSettings };
-      const token = localStorage.getItem('token');
-      if (token) {
-        ApiService.post('/auth/settings', updated, token).catch((e: any) => console.error("Failed to save settings to backend", e));
+      if (state.jwtToken) {
+        ApiService.post('/auth/settings', updated, state.jwtToken).catch((e: any) => console.error("Failed to save settings to backend", e));
       }
       return { settings: updated };
     });
