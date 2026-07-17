@@ -14,7 +14,7 @@ import { ApiService } from "@/services/api.service";
 export function CampaignBuilder() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { contacts, startCampaign, templates, builtinTemplates, settings, userPlan, setUpgradeDialogOpen } = useStore();
+  const { contacts, startCampaign, templates, builtinTemplates, settings, userPlan, setUpgradeDialogOpen, jwtToken } = useStore();
   
   const initialTemplateId = location.state?.selectedTemplateId;
   const isBuiltin = location.state?.isBuiltin;
@@ -122,8 +122,7 @@ export function CampaignBuilder() {
       if (attachmentFile) {
         const formData = new FormData();
         formData.append('file', attachmentFile);
-        const token = localStorage.getItem('token');
-        const res = await ApiService.upload<any>('/campaigns/upload', formData, token);
+        const res = await ApiService.upload<any>('/campaigns/upload', formData, jwtToken);
         if (res && res.path) {
           uploadedPath = res.path;
         }
