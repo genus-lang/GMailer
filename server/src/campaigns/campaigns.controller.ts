@@ -20,11 +20,6 @@ export class CampaignsController {
     return this.campaignsService.create(req.user.userId, data);
   }
 
-  @Get(':id')
-  async getCampaign(@Req() req: any, @Param('id') id: string) {
-    return this.campaignsService.findOne(req.user.userId, id);
-  }
-
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({
@@ -50,5 +45,10 @@ export class CampaignsController {
       success: true,
       path: file.path // e.g., 'uploads/xxxx.pdf'
     };
+  }
+
+  @Get(':id')
+  async getCampaign(@Req() req: any, @Param('id') id: string) {
+    return this.campaignsService.findOne(req.user.userId, id);
   }
 }
