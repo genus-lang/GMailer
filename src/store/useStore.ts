@@ -392,7 +392,16 @@ export const useStore = create<GMailerState>((set, get) => ({
       });
 
       if (active) {
+        const mappedQueueItems = (active.emails || []).map((e: any) => ({
+          id: e.id,
+          name: e.toEmail.split('@')[0],
+          email: e.toEmail,
+          status: e.status === 'SENT' ? 'Sent' : (e.status === 'FAILED' ? 'Failed' : (e.status === 'PROCESSING' ? 'Sending' : 'Pending')),
+          time: new Date(e.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }));
+        
         set({
+           queueItems: mappedQueueItems,
            activeCampaign: {
              id: active.id,
              name: active.name,
@@ -406,7 +415,7 @@ export const useStore = create<GMailerState>((set, get) => ({
            campaignHistory: mappedCampaigns
         });
       } else {
-        set({ activeCampaign: null, campaignHistory: mappedCampaigns });
+        set({ queueItems: [], activeCampaign: null, campaignHistory: mappedCampaigns });
       }
 
       // Populate sentHistory from all campaign emails

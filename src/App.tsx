@@ -15,10 +15,23 @@ import { useStore } from "@/store/useStore";
 
 export function App() {
   const syncWithStorage = useStore(state => state.syncWithStorage);
+  const isConnected = useStore(state => state.isConnected);
 
   useEffect(() => {
     syncWithStorage();
-  }, [syncWithStorage]);
+    
+    // Poll every 3 seconds to provide real-time Queue updates
+    let interval: NodeJS.Timeout;
+    if (isConnected) {
+      interval = setInterval(() => {
+        syncWithStorage();
+      }, 3000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [syncWithStorage, isConnected]);
 
   return (
     <Router>
