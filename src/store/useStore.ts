@@ -459,9 +459,8 @@ export const useStore = create<GMailerState>((set, get) => ({
         ? state.templates.map(t => t.id === template.id ? newTemplate : t)
         : [...state.templates, newTemplate];
       
-      const token = localStorage.getItem('token');
-      if (token) {
-        ApiService.post('/templates', newTemplate, token).catch((e: any) => console.error("Failed to save template to backend", e));
+      if (state.jwtToken) {
+        ApiService.post('/templates', newTemplate, state.jwtToken).catch((e: any) => console.error("Failed to save template to backend", e));
       }
       
       return { templates: newTemplates };
@@ -470,9 +469,8 @@ export const useStore = create<GMailerState>((set, get) => ({
   deleteTemplate: (id) => {
     set((state) => {
       const newTemplates = state.templates.filter(t => t.id !== id);
-      const token = localStorage.getItem('token');
-      if (token) {
-        ApiService.delete('/templates/' + id, token).catch((e: any) => console.error("Failed to delete template from backend", e));
+      if (state.jwtToken) {
+        ApiService.delete(`/templates/${id}`, state.jwtToken).catch((e: any) => console.error("Failed to delete template from backend", e));
       }
       return { templates: newTemplates };
     });
