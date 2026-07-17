@@ -36,6 +36,10 @@ export class GmailService {
       if (attachmentPath && fs.existsSync(attachmentPath)) {
         // Construct multipart/mixed email
         const boundary = 'foo1234567890boundary';
+        
+        const base64Data = fs.readFileSync(attachmentPath, { encoding: 'base64' });
+        const chunkedBase64 = base64Data.match(/.{1,76}/g)?.join('\r\n') || base64Data;
+
         messageParts = [
           `To: ${to}`,
           `Subject: ${utf8Subject}`,
@@ -52,7 +56,7 @@ export class GmailService {
           `Content-Disposition: attachment; filename="${path.basename(attachmentPath)}"`,
           'Content-Transfer-Encoding: base64',
           '',
-          fs.readFileSync(attachmentPath, { encoding: 'base64' }),
+          chunkedBase64,
           '',
           `--${boundary}--`
         ];
