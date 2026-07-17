@@ -312,6 +312,10 @@ export const useStore = create<GMailerState>((set, get) => ({
            userName: userData.name || null,
            userPicture: userData.picture || null
          });
+         
+         if (userData.settings) {
+           set({ settings: { ...defaultSettings, ...userData.settings } });
+         }
       } else {
          get().disconnect();
          return;
@@ -456,7 +460,7 @@ export const useStore = create<GMailerState>((set, get) => ({
       
       const token = localStorage.getItem('token');
       if (token) {
-        ApiService.post('/templates', newTemplate, token).catch(e => console.error("Failed to save template to backend", e));
+        ApiService.post('/templates', newTemplate, token).catch((e: any) => console.error("Failed to save template to backend", e));
       }
       
       return { templates: newTemplates };
@@ -467,7 +471,7 @@ export const useStore = create<GMailerState>((set, get) => ({
       const newTemplates = state.templates.filter(t => t.id !== id);
       const token = localStorage.getItem('token');
       if (token) {
-        ApiService.delete('/templates/' + id, token).catch(e => console.error("Failed to delete template from backend", e));
+        ApiService.delete('/templates/' + id, token).catch((e: any) => console.error("Failed to delete template from backend", e));
       }
       return { templates: newTemplates };
     });
@@ -482,7 +486,10 @@ export const useStore = create<GMailerState>((set, get) => ({
   updateSettings: (newSettings) => {
     set((state) => {
       const updated = { ...state.settings, ...newSettings };
-      // TODO: Call Backend ApiService.post('/settings', updated) here
+      const token = localStorage.getItem('token');
+      if (token) {
+        ApiService.post('/auth/settings', updated, token).catch((e: any) => console.error("Failed to save settings to backend", e));
+      }
       return { settings: updated };
     });
   }

@@ -23,6 +23,7 @@ model User {
   contacts           Contact[]
   templates          Template[]
   emails             EmailQueue[]
+  settings           Json?
 }
 
 model Subscription {

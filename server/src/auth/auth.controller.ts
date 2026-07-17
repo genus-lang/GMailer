@@ -51,4 +51,10 @@ export class AuthController {
   async logout() {
     return { success: true };
   }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('settings')
+  async updateSettings(@Req() req: any, @Body() body: any) {
+    return this.authService.updateSettings(req.user.userId, body);
+  }
 }
