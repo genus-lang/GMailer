@@ -448,7 +448,10 @@ export const useStore = create<GMailerState>((set, get) => ({
         variables: { company: c.company || '', role: c.role || '' },
         isProtected: false
       }));
-      set({ contacts: mappedContacts });
+      
+      // Preserve premium contacts that are already loaded in memory
+      const currentPremiumContacts = get().contacts.filter(c => c.isProtected);
+      set({ contacts: [...mappedContacts, ...currentPremiumContacts] });
 
       // 4. Set Templates
       set({ builtinTemplates: builtinTemplates || [] });
