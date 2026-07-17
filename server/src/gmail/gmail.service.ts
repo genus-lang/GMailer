@@ -31,7 +31,7 @@ export class GmailService {
       const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
       let messageParts: string[] = [];
 
-      const formattedBody = body.replace(/\\n/g, '<br>');
+      const formattedBody = body.replace(/\n/g, '<br>');
 
       if (attachmentPath && fs.existsSync(attachmentPath)) {
         // Construct multipart/mixed email
