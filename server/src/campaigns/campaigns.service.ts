@@ -39,7 +39,24 @@ export class CampaignsService {
     });
 
     if (recipients && Array.isArray(recipients)) {
-      for (const email of recipients) {
+      // Strictly prevent sending duplicate emails to the same contact globally
+      const pastEmails = await this.prisma.emailQueue.findMany({
+        where: { userId, toEmail: { in: recipients } },
+        select: { toEmail: true }
+      });
+      const sentBefore = new Set(pastEmails.map(e => e.toEmail));
+      
+      const filteredRecipients = recipients.filter(email => !sentBefore.has(email));
+
+      // Update the campaign stats total to reflect the filtered recipients
+      await this.prisma.campaign.update({
+        where: { id: campaign.id },
+        data: {
+          stats: { total: filteredRecipients.length, sent: 0, failed: 0, opened: 0 }
+        }
+      });
+
+      for (const email of filteredRecipients) {
         await this.queueService.addEmailToQueue(
           userId,
           campaign.id,

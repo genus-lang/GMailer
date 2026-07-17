@@ -199,28 +199,43 @@ export function CampaignBuilder() {
                   <p className="font-semibold">{selectedContacts.length} Contacts Selected</p>
                   <p className="text-sm text-secondary">Select the contacts for this campaign.</p>
                 </div>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => {
-                    if (selectedContactIds.size === contacts.length) {
-                      setSelectedContactIds(new Set());
-                    } else {
-                      setSelectedContactIds(new Set(contacts.map(c => c.id)));
-                    }
-                  }}
-                >
-                  {selectedContactIds.size === contacts.length ? 'Deselect All' : 'Select All'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      const newContacts = contacts.filter(c => !c.hasBeenEmailed);
+                      const next450 = newContacts.slice(0, 450).map(c => c.id);
+                      setSelectedContactIds(new Set(next450));
+                    }}
+                  >
+                    Select Next 450 (New)
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      if (selectedContactIds.size === contacts.filter(c => !c.hasBeenEmailed).length) {
+                        setSelectedContactIds(new Set());
+                      } else {
+                        setSelectedContactIds(new Set(contacts.filter(c => !c.hasBeenEmailed).map(c => c.id)));
+                      }
+                    }}
+                  >
+                    {selectedContactIds.size === contacts.filter(c => !c.hasBeenEmailed).length ? 'Deselect All' : 'Select All'}
+                  </Button>
+                </div>
               </div>
               <div className="max-h-60 overflow-y-auto border border-border rounded-md bg-white">
                 {contacts.map(contact => (
-                  <label key={contact.id} className="flex items-center gap-3 p-3 border-b border-border last:border-0 hover:bg-gray-50 cursor-pointer">
+                  <label key={contact.id} className={`flex items-center gap-3 p-3 border-b border-border last:border-0 hover:bg-gray-50 ${contact.hasBeenEmailed ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
                     <input 
                       type="checkbox" 
                       className="accent-primary w-4 h-4"
                       checked={selectedContactIds.has(contact.id)}
+                      disabled={contact.hasBeenEmailed}
                       onChange={(e) => {
+                        if (contact.hasBeenEmailed) return;
                         const next = new Set(selectedContactIds);
                         if (e.target.checked) next.add(contact.id);
                         else next.delete(contact.id);
@@ -228,7 +243,14 @@ export function CampaignBuilder() {
                       }}
                     />
                     <div>
-                      <p className="text-sm font-semibold">{contact.name || contact.email}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold">{contact.name || contact.email}</p>
+                        {contact.hasBeenEmailed && (
+                          <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                            Already Emailed
+                          </span>
+                        )}
+                      </div>
                       {contact.name && <p className="text-xs text-secondary">{contact.email}</p>}
                     </div>
                   </label>

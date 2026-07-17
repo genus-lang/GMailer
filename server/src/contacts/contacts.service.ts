@@ -6,10 +6,25 @@ export class ContactsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(userId: string) {
-    return this.prisma.contact.findMany({
+    const contacts = await this.prisma.contact.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
     });
+
+    const pastEmails = await this.prisma.emailQueue.findMany({
+      where: { 
+        userId, 
+        status: { in: ['SENT', 'PROCESSING', 'PENDING'] } 
+      },
+      select: { toEmail: true }
+    });
+    
+    const emailedSet = new Set(pastEmails.map(e => e.toEmail));
+
+    return contacts.map(c => ({
+      ...c,
+      hasBeenEmailed: emailedSet.has(c.email)
+    }));
   }
 
   async create(userId: string, data: any) {

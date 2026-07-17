@@ -24,6 +24,7 @@ export interface Contact {
   date: string;
   variables?: Record<string, string>;
   isProtected?: boolean;
+  hasBeenEmailed?: boolean;
 }
 
 export interface CampaignState {
