@@ -1,6 +1,6 @@
 import { Header } from "@/components/Header/Header";
 import { Button } from "@/components/ui/button";
-import { Plus, Play, Pause, CheckCircle2 } from "lucide-react";
+import { Plus, Play, Pause, CheckCircle2, Square } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { LIMITS } from "@/config/limits";
 import { useNavigate } from "react-router-dom";
@@ -57,6 +57,9 @@ export function Campaigns() {
                     <Play className="w-4 h-4 mr-1" /> Resume
                   </Button>
                 )}
+                <Button variant="outline" size="sm" onClick={useStore.getState().stopCampaign} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                  <Square className="w-4 h-4 mr-1" /> Stop
+                </Button>
               </div>
             </div>
             

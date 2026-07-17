@@ -71,4 +71,42 @@ export class CampaignsService {
 
     return campaign;
   }
+
+  async pause(userId: string, id: string) {
+    const campaign = await this.prisma.campaign.update({
+      where: { id, userId },
+      data: { status: 'PAUSED' }
+    });
+    // Optional: could also update PENDING queue items to PAUSED, but our processor can just check campaign status if needed, 
+    // or we can update queue directly:
+    await this.prisma.emailQueue.updateMany({
+      where: { campaignId: id, status: 'PENDING' },
+      data: { status: 'PAUSED' }
+    });
+    return campaign;
+  }
+
+  async resume(userId: string, id: string) {
+    const campaign = await this.prisma.campaign.update({
+      where: { id, userId },
+      data: { status: 'RUNNING' }
+    });
+    await this.prisma.emailQueue.updateMany({
+      where: { campaignId: id, status: 'PAUSED' },
+      data: { status: 'PENDING' }
+    });
+    return campaign;
+  }
+
+  async stop(userId: string, id: string) {
+    const campaign = await this.prisma.campaign.update({
+      where: { id, userId },
+      data: { status: 'COMPLETED' }
+    });
+    await this.prisma.emailQueue.updateMany({
+      where: { campaignId: id, status: { in: ['PENDING', 'PAUSED'] } },
+      data: { status: 'FAILED', error: 'Campaign stopped' }
+    });
+    return campaign;
+  }
 }

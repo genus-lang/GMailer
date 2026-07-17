@@ -1,11 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock, Users, Calendar, Pause, Play, ExternalLink, CheckCircle2, TrendingUp } from "lucide-react";
+import { Clock, Users, Calendar, Pause, Play, ExternalLink, CheckCircle2, TrendingUp, Square } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { useNavigate } from "react-router-dom";
 
 export function CampaignCard() {
-  const { activeCampaign, toggleCampaignStatus } = useStore();
+  const { activeCampaign, toggleCampaignStatus, stopCampaign } = useStore();
   const navigate = useNavigate();
 
   if (!activeCampaign) {
@@ -104,21 +104,30 @@ export function CampaignCard() {
       {/* Actions */}
       <div className="flex gap-3">
         {!isCompleted && (
-          <Button
-            variant="outline"
-            onClick={toggleCampaignStatus}
-            className={`flex-1 h-10 rounded-xl font-bold text-sm border-2 ${
-              isRunning
-                ? 'border-amber-200 text-amber-700 hover:bg-amber-50'
-                : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-            }`}
-          >
-            {isRunning ? (
-              <><Pause className="w-4 h-4 mr-2" /> Pause</>
-            ) : (
-              <><Play className="w-4 h-4 mr-2" /> Resume</>
-            )}
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={toggleCampaignStatus}
+              className={`flex-1 h-10 rounded-xl font-bold text-sm border-2 ${
+                isRunning
+                  ? 'border-amber-200 text-amber-700 hover:bg-amber-50'
+                  : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+              }`}
+            >
+              {isRunning ? (
+                <><Pause className="w-4 h-4 mr-2" /> Pause</>
+              ) : (
+                <><Play className="w-4 h-4 mr-2" /> Resume</>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={stopCampaign}
+              className="h-10 rounded-xl font-bold text-sm border-2 border-red-200 text-red-600 hover:bg-red-50"
+            >
+              <Square className="w-4 h-4" />
+            </Button>
+          </>
         )}
         <Button
           variant="outline"

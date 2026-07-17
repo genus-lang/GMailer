@@ -31,6 +31,8 @@ export class GmailService {
       const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
       let messageParts: string[] = [];
 
+      const formattedBody = body.replace(/\\n/g, '<br>');
+
       if (attachmentPath && fs.existsSync(attachmentPath)) {
         // Construct multipart/mixed email
         const boundary = 'foo1234567890boundary';
@@ -43,7 +45,7 @@ export class GmailService {
           `--${boundary}`,
           'Content-Type: text/html; charset=utf-8',
           '',
-          body,
+          formattedBody,
           '',
           `--${boundary}`,
           `Content-Type: application/pdf; name="${path.basename(attachmentPath)}"`,
@@ -62,7 +64,7 @@ export class GmailService {
           'MIME-Version: 1.0',
           `Subject: ${utf8Subject}`,
           '',
-          body,
+          formattedBody,
         ];
       }
 

@@ -112,6 +112,7 @@ interface GMailerState {
   startCampaign: (payload: any) => Promise<void>;
   pauseCampaign: () => Promise<void>;
   resumeCampaign: () => Promise<void>;
+  stopCampaign: () => Promise<void>;
   syncWithStorage: () => void;
   
   // Contacts
@@ -279,13 +280,45 @@ export const useStore = create<GMailerState>((set, get) => ({
   },
   
   pauseCampaign: async () => {
-    // TODO: Implement Backend API for pausing campaigns
-    console.warn("Pause Campaign not yet implemented on Thin Client backend");
+    const { activeCampaign, jwtToken, syncWithStorage } = get();
+    if (!activeCampaign || !jwtToken) return;
+    try {
+      await ApiService.post(`/campaigns/${activeCampaign.id}/pause`, {}, jwtToken);
+      set({
+        activeCampaign: { ...activeCampaign, status: 'Paused' }
+      });
+      syncWithStorage();
+    } catch (e) {
+      console.error("Failed to pause campaign", e);
+    }
   },
-  
+
   resumeCampaign: async () => {
-    // TODO: Implement Backend API for resuming campaigns
-    console.warn("Resume Campaign not yet implemented on Thin Client backend");
+    const { activeCampaign, jwtToken, syncWithStorage } = get();
+    if (!activeCampaign || !jwtToken) return;
+    try {
+      await ApiService.post(`/campaigns/${activeCampaign.id}/resume`, {}, jwtToken);
+      set({
+        activeCampaign: { ...activeCampaign, status: 'Sending' }
+      });
+      syncWithStorage();
+    } catch (e) {
+      console.error("Failed to resume campaign", e);
+    }
+  },
+
+  stopCampaign: async () => {
+    const { activeCampaign, jwtToken, syncWithStorage } = get();
+    if (!activeCampaign || !jwtToken) return;
+    try {
+      await ApiService.post(`/campaigns/${activeCampaign.id}/stop`, {}, jwtToken);
+      set({
+        activeCampaign: { ...activeCampaign, status: 'Completed' }
+      });
+      syncWithStorage();
+    } catch (e) {
+      console.error("Failed to stop campaign", e);
+    }
   },
   
   syncWithStorage: async () => {

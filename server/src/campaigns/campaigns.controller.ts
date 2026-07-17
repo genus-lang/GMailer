@@ -4,6 +4,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import * as os from 'os';
 
 @Controller('campaigns')
 @UseGuards(AuthGuard('jwt'))
@@ -23,7 +24,7 @@ export class CampaignsController {
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({
-      destination: './uploads',
+      destination: os.tmpdir(),
       filename: (req: any, file: any, cb: any) => {
         const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
         cb(null, `${randomName}${extname(file.originalname)}`);
@@ -50,5 +51,20 @@ export class CampaignsController {
   @Get(':id')
   async getCampaign(@Req() req: any, @Param('id') id: string) {
     return this.campaignsService.findOne(req.user.userId, id);
+  }
+
+  @Post(':id/pause')
+  async pauseCampaign(@Req() req: any, @Param('id') id: string) {
+    return this.campaignsService.pause(req.user.userId, id);
+  }
+
+  @Post(':id/resume')
+  async resumeCampaign(@Req() req: any, @Param('id') id: string) {
+    return this.campaignsService.resume(req.user.userId, id);
+  }
+
+  @Post(':id/stop')
+  async stopCampaign(@Req() req: any, @Param('id') id: string) {
+    return this.campaignsService.stop(req.user.userId, id);
   }
 }
