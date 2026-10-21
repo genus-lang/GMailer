@@ -10,7 +10,7 @@ export interface UserData {
 }
 
 // The OAuth client ID from Google Cloud Console (Chrome Extension type)
-const GOOGLE_CLIENT_ID = '933580198425-doe4ufalqg4m73qje93h5ckq1ua0o3t3.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '933580198425-4j78ev4hitnv02or0i0j9poj7sh3va78.apps.googleusercontent.com';
 
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
@@ -29,6 +29,7 @@ export const AuthService = {
 
       // Get the Chrome-managed redirect URL for this extension
       const redirectUrl = chrome.identity.getRedirectURL();
+      console.log('[Auth] Google OAuth Redirect URI:', redirectUrl);
 
       // Build the Google OAuth URL DIRECTLY — no backend needed for this step!
       // This eliminates the "Authorization page could not be loaded" error caused
