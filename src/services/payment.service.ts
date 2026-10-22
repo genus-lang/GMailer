@@ -25,10 +25,8 @@ export const PaymentService = {
       // We pass the paymentSessionId in the 'key' parameter to the backend checkout route
       const checkoutUrl = baseUrl + '/checkout?orderId=' + order.orderId + '&amount=' + order.amount + '&key=' + order.paymentSessionId + '&token=' + token + '&returnUrl=' + returnUrl;
       
-      if (typeof chrome !== 'undefined' && chrome.tabs) {
-        chrome.tabs.create({ url: checkoutUrl });
-        if (popup) popup.close(); // Close the blank popup if we successfully used chrome.tabs
-      } else if (popup) {
+      // Open checkout in a new tab/window - works without 'tabs' permission
+      if (popup) {
         popup.location.href = checkoutUrl;
       } else {
         window.open(checkoutUrl, '_blank', 'width=500,height=700,left=100,top=100');

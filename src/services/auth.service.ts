@@ -77,9 +77,15 @@ export const AuthService = {
               throw new Error('No token returned from server');
             }
 
-            chrome.storage.local.set({ jwtToken: result.token });
+            const storageData: Record<string, any> = { jwtToken: result.token };
+            if (result.accessToken) {
+              storageData.googleAccessToken = result.accessToken;
+            }
+            chrome.storage.local.set(storageData);
+
             resolve({
               token: result.token,
+              accessToken: result.accessToken,
               plan: result.plan || 'FREE',
               email: result.email,
               name: result.name,
@@ -93,13 +99,55 @@ export const AuthService = {
     });
   },
 
+  async getGoogleAccessToken(interactive = false): Promise<string | null> {
+    return new Promise((resolve) => {
+      if (typeof chrome === 'undefined' || !chrome.identity) {
+        resolve(null);
+        return;
+      }
+
+      const redirectUrl = chrome.identity.getRedirectURL();
+      const params = new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        redirect_uri: redirectUrl,
+        response_type: 'token',
+        scope: GOOGLE_SCOPES,
+        prompt: interactive ? 'consent' : 'none',
+      });
+
+      const authUrl = `https://accounts.google.com/o/oauth2/auth?${params.toString()}`;
+
+      chrome.identity.launchWebAuthFlow(
+        { url: authUrl, interactive },
+        (responseUrl) => {
+          if ((chrome.runtime as any)?.lastError || !responseUrl) {
+            resolve(null);
+            return;
+          }
+
+          try {
+            const url = new URL(responseUrl);
+            const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''));
+            const accessToken = hashParams.get('access_token');
+            if (accessToken && chrome.storage?.local) {
+              chrome.storage.local.set({ googleAccessToken: accessToken });
+            }
+            resolve(accessToken || null);
+          } catch {
+            resolve(null);
+          }
+        }
+      );
+    });
+  },
+
   async getMe(token: string): Promise<UserData> {
     return await ApiService.get<UserData>('/auth/me', token);
   },
 
   async logout(): Promise<void> {
     if (typeof chrome !== 'undefined' && chrome.storage) {
-      chrome.storage.local.remove(['jwtToken']);
+      chrome.storage.local.remove(['jwtToken', 'googleAccessToken']);
     }
   }
 };

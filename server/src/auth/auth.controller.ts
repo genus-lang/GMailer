@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Req, Res, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, Res, UseGuards, BadRequestException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { Injectable, ExecutionContext } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -51,6 +51,37 @@ export class AuthController {
   @Get('me')
   async getMe(@Req() req: any) {
     return this.authService.getMe(req.user.userId);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('google/token')
+  async getGoogleToken(@Req() req: any) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { googleRefreshToken: true }
+    });
+
+    if (!user || !user.googleRefreshToken) {
+      throw new BadRequestException('Google account not connected or refresh token missing');
+    }
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID || '',
+        client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
+        refresh_token: user.googleRefreshToken,
+        grant_type: 'refresh_token',
+      }).toString(),
+    });
+
+    const tokens = await tokenRes.json() as any;
+    if (tokens.error) {
+      throw new BadRequestException(`Failed to refresh Google token: ${tokens.error_description || tokens.error}`);
+    }
+
+    return { accessToken: tokens.access_token };
   }
 
   @Post('logout')
@@ -118,6 +149,7 @@ export class AuthController {
     const jwtToken = this.jwtService.sign({ sub: user.id, email: user.email });
     return {
       token: jwtToken,
+      accessToken: tokens.access_token,
       plan: user.plan,
       email: user.email,
       name: user.name,

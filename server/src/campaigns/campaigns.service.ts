@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 
@@ -25,7 +25,34 @@ export class CampaignsService {
   }
 
   async create(userId: string, data: any) {
-    const { name, subject, body, recipients, attachmentPath } = data; // recipients is array of emails
+    const { name, subject, body, recipients, attachmentPath, allowResend } = data; // recipients is array of emails
+
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      throw new BadRequestException('No recipients provided for the campaign.');
+    }
+
+    let finalRecipients = recipients;
+
+    if (!allowResend) {
+      // Prevent sending duplicate emails to the same contact if already sent or in progress
+      const pastEmails = await this.prisma.emailQueue.findMany({
+        where: { 
+          userId, 
+          toEmail: { in: recipients },
+          status: { in: ['SENT', 'PROCESSING', 'PENDING'] }
+        },
+        select: { toEmail: true }
+      });
+      const sentBefore = new Set(pastEmails.map(e => e.toEmail.toLowerCase().trim()));
+      
+      finalRecipients = recipients.filter(email => !sentBefore.has(email.toLowerCase().trim()));
+    }
+
+    if (finalRecipients.length === 0) {
+      throw new BadRequestException(
+        'All selected recipients have already been emailed previously. Enable "Allow re-sending" in campaign settings or select new contacts.'
+      );
+    }
 
     const campaign = await this.prisma.campaign.create({
       data: {
@@ -35,42 +62,19 @@ export class CampaignsService {
         body,
         attachmentPath,
         status: 'RUNNING',
-        stats: { total: recipients?.length || 0, sent: 0, failed: 0, opened: 0 },
+        stats: { total: finalRecipients.length, sent: 0, failed: 0, opened: 0 },
       },
     });
 
-    if (recipients && Array.isArray(recipients)) {
-      // Strictly prevent sending duplicate emails to the same contact if already sent or in progress
-      const pastEmails = await this.prisma.emailQueue.findMany({
-        where: { 
-          userId, 
-          toEmail: { in: recipients },
-          status: { in: ['SENT', 'PROCESSING', 'PENDING'] }
-        },
-        select: { toEmail: true }
-      });
-      const sentBefore = new Set(pastEmails.map(e => e.toEmail));
-      
-      const filteredRecipients = recipients.filter(email => !sentBefore.has(email));
-
-      // Update the campaign stats total to reflect the filtered recipients
-      await this.prisma.campaign.update({
-        where: { id: campaign.id },
-        data: {
-          stats: { total: filteredRecipients.length, sent: 0, failed: 0, opened: 0 }
-        }
-      });
-
-      for (const email of filteredRecipients) {
-        await this.queueService.addEmailToQueue(
-          userId,
-          campaign.id,
-          email,
-          subject,
-          body,
-          attachmentPath
-        );
-      }
+    for (const email of finalRecipients) {
+      await this.queueService.addEmailToQueue(
+        userId,
+        campaign.id,
+        email,
+        subject,
+        body,
+        attachmentPath
+      );
     }
 
     return campaign;

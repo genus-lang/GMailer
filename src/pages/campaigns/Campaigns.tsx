@@ -66,7 +66,9 @@ export function Campaigns() {
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-white p-4 rounded-xl border border-border shadow-sm">
                 <p className="text-sm text-secondary mb-1">Progress</p>
-                <p className="text-2xl font-bold">{Math.round((activeCampaign.sent / activeCampaign.total) * 100)}%</p>
+                <p className="text-2xl font-bold">
+                  {activeCampaign.total > 0 ? Math.round((activeCampaign.sent / activeCampaign.total) * 100) : 0}%
+                </p>
               </div>
               <div className="bg-white p-4 rounded-xl border border-border shadow-sm">
                 <p className="text-sm text-secondary mb-1">Emails Sent</p>

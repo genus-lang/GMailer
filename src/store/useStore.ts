@@ -91,6 +91,7 @@ interface GMailerState {
   userName: string | null;
   userPicture: string | null;
   authToken: string | null;
+  setAuthToken: (token: string | null) => void;
   jwtToken: string | null;
   connectGoogle: () => Promise<void>;
   
@@ -176,6 +177,7 @@ export const useStore = create<GMailerState>((set, get) => ({
   userName: null,
   userPicture: null,
   authToken: null,
+  setAuthToken: (token) => set({ authToken: token }),
   jwtToken: null,
   dailyUsage: { date: new Date().toISOString().split('T')[0], emailsSent: 0, aiCallsMade: 0, campaignsCreated: 0 },
   userPlan: 'FREE',
@@ -201,12 +203,9 @@ export const useStore = create<GMailerState>((set, get) => ({
         userEmail: authResponse.email || "developer@gmail.com",
         userName: authResponse.name || null,
         userPicture: authResponse.picture || null,
-        // Since we are no longer using the Extension identity token directly for Gmail sending (the backend does it)
-        // we just set authToken to a dummy value so the UI doesn't crash if it checks it.
-        authToken: "handled_by_backend",
+        authToken: (authResponse as any).accessToken || null,
       });
       
-      // Removed Firebase Realtime sync: we will fetch data via API instead.
     } catch (e: any) {
       console.error("Login failed:", e);
       alert("Authentication failed: " + e.message);
@@ -256,7 +255,8 @@ export const useStore = create<GMailerState>((set, get) => ({
         subject: payload.subject,
         body: payload.body || payload.bodyTemplate,
         recipients: payload.recipients.map((r: any) => r.email),
-        attachmentPath: payload.attachmentPath
+        attachmentPath: payload.attachmentPath,
+        allowResend: payload.allowResend
       }, jwtToken);
 
       // 2. Set UI Active Campaign State
@@ -264,7 +264,7 @@ export const useStore = create<GMailerState>((set, get) => ({
         activeCampaign: {
           id: campaign.id,
           name: campaign.name,
-          total: payload.recipients.length,
+          total: campaign.stats?.total || payload.recipients.length,
           sent: 0,
           failed: 0,
           status: 'Sending',
@@ -325,12 +325,13 @@ export const useStore = create<GMailerState>((set, get) => ({
     let token = get().jwtToken;
     
     // Attempt to restore session from chrome storage
-    if (!token && typeof chrome !== 'undefined' && chrome.storage) {
-      token = await new Promise<string | null>((resolve) => {
-        chrome.storage.local.get(['jwtToken'], (result) => resolve(result.jwtToken || null));
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      const stored = await new Promise<any>((resolve) => {
+        chrome.storage.local.get(['jwtToken', 'googleAccessToken'], (result) => resolve(result || {}));
       });
-      if (token) {
-        set({ jwtToken: token, isConnected: true, authToken: "handled_by_backend" });
+      if (stored.jwtToken) {
+        token = stored.jwtToken;
+        set({ jwtToken: token, isConnected: true, authToken: stored.googleAccessToken || null });
       }
     }
 
@@ -420,8 +421,14 @@ export const useStore = create<GMailerState>((set, get) => ({
 
       // Populate sentHistory from all campaign emails
       const historyItems: any[] = [];
+      const sentEmailSet = new Set<string>();
       campaigns.forEach((c: any) => {
         if (c.emails && Array.isArray(c.emails)) {
+          c.emails.forEach((e: any) => {
+            if (e.toEmail && ['SENT', 'PROCESSING', 'PENDING'].includes(e.status)) {
+              sentEmailSet.add(e.toEmail.toLowerCase().trim());
+            }
+          });
           c.emails.filter((e: any) => e.status === 'SENT').forEach((e: any) => {
             historyItems.push({
               id: e.id,
@@ -439,15 +446,19 @@ export const useStore = create<GMailerState>((set, get) => ({
       set({ sentHistory: historyItems });
 
       // 3. Map Contacts
-      const mappedContacts = rawContacts.map((c: any) => ({
-        id: c.id,
-        name: c.name || '',
-        email: c.email,
-        status: 'Active' as const,
-        date: new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        variables: { company: c.company || '', role: c.role || '' },
-        isProtected: false
-      }));
+      const mappedContacts = rawContacts.map((c: any) => {
+        const emailNorm = (c.email || '').toLowerCase().trim();
+        return {
+          id: c.id,
+          name: c.name || '',
+          email: c.email,
+          status: 'Active' as const,
+          date: new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          variables: { company: c.company || '', role: c.role || '' },
+          isProtected: false,
+          hasBeenEmailed: sentEmailSet.has(emailNorm)
+        };
+      });
       
       // Preserve premium contacts that are already loaded in memory
       const currentPremiumContacts = get().contacts.filter(c => c.isProtected);

@@ -5,6 +5,7 @@ import { markThreadAsReadAPI, sendReplyAPI } from "@/lib/email/gmailInboxProvide
 import { format } from "date-fns";
 import { Send, Reply as ReplyIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AuthService } from "@/services/auth.service";
 
 export function ThreadView({ thread }: { thread: EmailThread }) {
   const { markThreadRead } = useInboxStore();
@@ -15,7 +16,7 @@ export function ThreadView({ thread }: { thread: EmailThread }) {
 
   useEffect(() => {
     // Mark as read when opened
-    if (thread.isUnread && authToken) {
+    if (thread.isUnread && authToken && authToken !== 'handled_by_backend') {
       markThreadAsReadAPI(authToken, thread.id).then((success) => {
         if (success) markThreadRead(thread.id);
       });
@@ -28,9 +29,29 @@ export function ThreadView({ thread }: { thread: EmailThread }) {
   }, [thread.id]);
 
   const handleSendReply = async () => {
-    if (!replyText.trim() || !authToken) return;
+    if (!replyText.trim()) return;
     setIsSending(true);
     
+    let token = authToken;
+    if (!token || token === 'handled_by_backend') {
+      const stored = typeof chrome !== 'undefined' && chrome.storage
+        ? await chrome.storage.local.get(['googleAccessToken'])
+        : null;
+      token = stored?.googleAccessToken || null;
+      if (!token) {
+        token = await AuthService.getGoogleAccessToken(true);
+      }
+      if (token) {
+        useStore.getState().setAuthToken(token);
+      }
+    }
+
+    if (!token) {
+      alert("Please authorize your Google account to send replies.");
+      setIsSending(false);
+      return;
+    }
+
     // Find who to reply to (the last person who sent a message that wasn't us)
     const lastIncomingMessage = [...thread.messages].reverse().find(m => !m.from.includes(userEmail || ""));
     const to = lastIncomingMessage ? lastIncomingMessage.from : thread.participants[0];
@@ -40,7 +61,7 @@ export function ThreadView({ thread }: { thread: EmailThread }) {
     const subject = thread.subject.toLowerCase().startsWith('re:') ? thread.subject : `Re: ${thread.subject}`;
 
     const success = await sendReplyAPI(
-      authToken,
+      token,
       thread.id,
       to,
       subject,
@@ -50,10 +71,8 @@ export function ThreadView({ thread }: { thread: EmailThread }) {
 
     if (success) {
       setReplyText("");
-      // Ideally we would fetch the thread again here to show the new message
-      // but for now, we'll just let the next background sync catch it
     } else {
-      alert("Failed to send reply. Check console for details.");
+      alert("Failed to send reply. Please check your Gmail connection.");
     }
     
     setIsSending(false);

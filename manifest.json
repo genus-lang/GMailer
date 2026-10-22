@@ -20,7 +20,7 @@
     "storage",
     "unlimitedStorage",
     "identity.email",
-    "tabs"
+    "alarms"
   ],
   "oauth2": {
     "client_id": "933580198425-doe4ufalqg4m73qje93h5ckq1ua0o3t3.apps.googleusercontent.com",

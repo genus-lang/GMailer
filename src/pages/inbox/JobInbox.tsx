@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { useInboxStore } from "@/store/useInboxStore";
 import { useStore } from "@/store/useStore";
 import { fetchInboxThreads } from "@/lib/email/gmailInboxProvider";
-import { Inbox, RefreshCw, Mail, AlertCircle } from "lucide-react";
+import { Inbox, RefreshCw, Mail, AlertCircle, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThreadList } from "./ThreadList";
 import { ThreadView } from "./ThreadView";
+import { AuthService } from "@/services/auth.service";
+import { ApiService } from "@/services/api.service";
 
 export function JobInbox() {
   const { 
@@ -25,42 +27,75 @@ export function JobInbox() {
     syncWithStorage();
     // Auto-load on mount with a small delay to let auth token settle
     const timer = setTimeout(() => {
-      loadInbox();
+      loadInbox(false);
     }, 800);
     return () => clearTimeout(timer);
   }, [isConnected]);
 
-  // Get fresh token from chrome.identity directly (avoids stale authToken state)
-  const getFreshToken = (): Promise<string | null> => {
-    return new Promise((resolve) => {
-      if (typeof chrome === 'undefined' || !chrome.identity) {
-        resolve(null);
-        return;
-      }
-      chrome.identity.getAuthToken({ interactive: false }, (token: any) => {
-        const runtime = chrome.runtime as any;
-        if (runtime.lastError || !token) {
-          console.warn('[JobInbox] Could not get auth token:', runtime.lastError?.message);
-          resolve(null);
-        } else {
-          resolve(typeof token === 'string' ? token : null);
-        }
-      });
-    });
-  };
-
-  const loadInbox = async () => {
-    setError(null);
-    const token = await getFreshToken();
-    
-    if (!token) {
-      setError('Not authenticated. Please connect your Google account.');
-      return;
+  // Retrieve valid Google OAuth Access Token
+  const getFreshToken = async (interactive = false): Promise<string | null> => {
+    // 1. Check existing in-memory authToken (if valid and not dummy)
+    const { authToken, jwtToken, setAuthToken } = useStore.getState();
+    if (authToken && authToken !== 'handled_by_backend') {
+      return authToken;
     }
 
+    // 2. Check chrome.storage
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      const stored = await new Promise<any>((resolve) => {
+        chrome.storage.local.get(['googleAccessToken'], (res) => resolve(res || {}));
+      });
+      if (stored.googleAccessToken) {
+        setAuthToken(stored.googleAccessToken);
+        return stored.googleAccessToken;
+      }
+    }
+
+    // 3. Try backend GET /auth/google/token if authenticated with JWT
+    if (jwtToken) {
+      try {
+        const res = await ApiService.get<{ accessToken: string }>('/auth/google/token', jwtToken);
+        if (res?.accessToken) {
+          setAuthToken(res.accessToken);
+          if (typeof chrome !== 'undefined' && chrome.storage) {
+            chrome.storage.local.set({ googleAccessToken: res.accessToken });
+          }
+          return res.accessToken;
+        }
+      } catch (e) {
+        console.warn('[JobInbox] Failed to get token from backend:', e);
+      }
+    }
+
+    // 4. Try launchWebAuthFlow (silent or interactive)
+    try {
+      const webToken = await AuthService.getGoogleAccessToken(interactive);
+      if (webToken) {
+        setAuthToken(webToken);
+        return webToken;
+      }
+    } catch (e) {
+      console.warn('[JobInbox] launchWebAuthFlow failed:', e);
+    }
+
+    return null;
+  };
+
+  const loadInbox = async (interactive = false) => {
+    setError(null);
     setIsLoading(true);
     setIsRefreshing(true);
+
     try {
+      const token = await getFreshToken(interactive);
+      
+      if (!token) {
+        setError('Google authorization required to read recruiter replies.');
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+
       console.log('[JobInbox] Loading inbox, contacts:', contacts.length);
       const fetchedThreads = await fetchInboxThreads(token, contacts);
       setThreads(fetchedThreads);
@@ -69,7 +104,15 @@ export function JobInbox() {
       }
     } catch (err: any) {
       console.error("[JobInbox] Failed to load inbox:", err);
-      setError(err.message || 'Failed to load inbox. Please try refreshing.');
+      if (err.message?.includes('401') || err.message?.includes('Invalid Credentials')) {
+        if (typeof chrome !== 'undefined' && chrome.storage) {
+          chrome.storage.local.remove(['googleAccessToken']);
+        }
+        useStore.getState().setAuthToken(null);
+        setError('Google authorization expired. Please click Authorize Inbox below.');
+      } else {
+        setError(err.message || 'Failed to load inbox. Please try refreshing.');
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -96,7 +139,7 @@ export function JobInbox() {
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={loadInbox} 
+          onClick={() => loadInbox(false)} 
           disabled={isRefreshing}
           className="gap-2"
         >
@@ -105,11 +148,21 @@ export function JobInbox() {
         </Button>
       </div>
 
-      {/* Error Banner */}
+      {/* Error / Auth Banner */}
       {error && (
-        <div className="flex items-center gap-3 px-6 py-3 bg-red-50 border-b border-red-100 text-red-700 text-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
+        <div className="flex items-center justify-between px-6 py-3 bg-amber-50 border-b border-amber-200 text-amber-900 text-sm">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-600" />
+            <span>{error}</span>
+          </div>
+          <Button 
+            size="sm" 
+            onClick={() => loadInbox(true)}
+            className="bg-primary hover:bg-primary-hover text-white text-xs h-7 px-3 font-semibold shadow-sm gap-1.5"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            Authorize Inbox
+          </Button>
         </div>
       )}
 

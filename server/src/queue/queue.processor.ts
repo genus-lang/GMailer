@@ -63,9 +63,13 @@ export class EmailQueueProcessor extends WorkerHost {
         if (campaign) {
           const stats: any = campaign.stats || { total: 0, sent: 0, failed: 0, opened: 0 };
           stats.sent = (stats.sent || 0) + 1;
+          const isFinished = (stats.sent + (stats.failed || 0)) >= (stats.total || 0);
           await this.prisma.campaign.update({
             where: { id: campaign.id },
-            data: { stats }
+            data: { 
+              stats,
+              ...(isFinished ? { status: 'COMPLETED' } : {})
+            }
           });
         }
       }
@@ -88,9 +92,13 @@ export class EmailQueueProcessor extends WorkerHost {
         if (campaign) {
           const stats: any = campaign.stats || { total: 0, sent: 0, failed: 0, opened: 0 };
           stats.failed = (stats.failed || 0) + 1;
+          const isFinished = ((stats.sent || 0) + stats.failed) >= (stats.total || 0);
           await this.prisma.campaign.update({
             where: { id: campaign.id },
-            data: { stats }
+            data: { 
+              stats,
+              ...(isFinished ? { status: 'COMPLETED' } : {})
+            }
           });
         }
       }

@@ -29,8 +29,12 @@ export function CampaignBuilder() {
   
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [allowResend, setAllowResend] = useState(false);
 
-  const [selectedContactIds, setSelectedContactIds] = useState<Set<number>>(new Set(contacts.map(c => c.id)));
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<any>>(() => {
+    const unemailed = contacts.filter(c => !c.hasBeenEmailed);
+    return new Set((unemailed.length > 0 ? unemailed : contacts).map(c => c.id));
+  });
 
   useEffect(() => {
     if (initialTemplateId) {
@@ -139,19 +143,39 @@ export function CampaignBuilder() {
       ? renderTemplate(settings.signature, settings.globalVariables || {})
       : '';
 
-    await startCampaign({
-      id: `camp_${Date.now()}`,
-      name,
-      subject,
-      bodyTemplate: signatureRendered ? `${body}\n\n${signatureRendered}` : body,
-      minDelay,
-      maxDelay,
-      recipients: uniqueRecipients,
-      attachmentPath: uploadedPath
-    });
+    const allAlreadyEmailed = uniqueRecipients.every(r => r.hasBeenEmailed);
+    let effectiveAllowResend = allowResend;
 
-    setIsUploading(false);
-    navigate("/");
+    if (allAlreadyEmailed && !allowResend) {
+      const confirmResend = window.confirm(
+        "All selected contacts have already been emailed in past campaigns.\n\nWould you like to allow re-sending to these contacts?"
+      );
+      if (!confirmResend) {
+        setIsUploading(false);
+        return;
+      }
+      effectiveAllowResend = true;
+    }
+
+    try {
+      await startCampaign({
+        id: `camp_${Date.now()}`,
+        name,
+        subject,
+        bodyTemplate: signatureRendered ? `${body}\n\n${signatureRendered}` : body,
+        minDelay,
+        maxDelay,
+        recipients: uniqueRecipients,
+        attachmentPath: uploadedPath,
+        allowResend: effectiveAllowResend
+      });
+
+      setIsUploading(false);
+      navigate("/");
+    } catch (err: any) {
+      setIsUploading(false);
+      alert(err.message || "Failed to start campaign.");
+    }
   };
 
   const previewVars = {
@@ -239,27 +263,38 @@ export function CampaignBuilder() {
                     variant="outline" 
                     size="sm"
                     onClick={() => {
-                      if (selectedContactIds.size === contacts.filter(c => !c.hasBeenEmailed).length) {
-                        setSelectedContactIds(new Set());
+                      const selectable = allowResend ? contacts : contacts.filter(c => !c.hasBeenEmailed);
+                      const currentSelectableIds = new Set(selectable.map(c => c.id));
+                      const isAllSelected = selectable.length > 0 && selectable.every(c => selectedContactIds.has(c.id));
+                      
+                      if (isAllSelected) {
+                        const next = new Set(selectedContactIds);
+                        currentSelectableIds.forEach(id => next.delete(id));
+                        setSelectedContactIds(next);
                       } else {
-                        setSelectedContactIds(new Set(contacts.filter(c => !c.hasBeenEmailed).map(c => c.id)));
+                        const next = new Set(selectedContactIds);
+                        currentSelectableIds.forEach(id => next.add(id));
+                        setSelectedContactIds(next);
                       }
                     }}
                   >
-                    {selectedContactIds.size === contacts.filter(c => !c.hasBeenEmailed).length ? 'Deselect All' : 'Select All'}
+                    {(allowResend ? contacts : contacts.filter(c => !c.hasBeenEmailed)).length > 0 && 
+                     (allowResend ? contacts : contacts.filter(c => !c.hasBeenEmailed)).every(c => selectedContactIds.has(c.id)) 
+                      ? 'Deselect All' 
+                      : 'Select All'}
                   </Button>
                 </div>
               </div>
               <div className="max-h-60 overflow-y-auto border border-border rounded-md bg-white">
                 {contacts.map(contact => (
-                  <label key={contact.id} className={`flex items-center gap-3 p-3 border-b border-border last:border-0 hover:bg-gray-50 ${contact.hasBeenEmailed ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+                  <label key={contact.id} className={`flex items-center gap-3 p-3 border-b border-border last:border-0 hover:bg-gray-50 ${(contact.hasBeenEmailed && !allowResend) ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
                     <input 
                       type="checkbox" 
                       className="accent-primary w-4 h-4"
                       checked={selectedContactIds.has(contact.id)}
-                      disabled={contact.hasBeenEmailed}
+                      disabled={contact.hasBeenEmailed && !allowResend}
                       onChange={(e) => {
-                        if (contact.hasBeenEmailed) return;
+                        if (contact.hasBeenEmailed && !allowResend) return;
                         const next = new Set(selectedContactIds);
                         if (e.target.checked) next.add(contact.id);
                         else next.delete(contact.id);
@@ -270,8 +305,8 @@ export function CampaignBuilder() {
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold">{contact.name || contact.email}</p>
                         {contact.hasBeenEmailed && (
-                          <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                            Already Emailed
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${allowResend ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}`}>
+                            {allowResend ? 'Previously Emailed' : 'Already Emailed'}
                           </span>
                         )}
                       </div>
@@ -280,6 +315,18 @@ export function CampaignBuilder() {
                   </label>
                 ))}
               </div>
+
+              <label className="flex items-center gap-2.5 pt-2 border-t border-border cursor-pointer select-none">
+                <input 
+                  type="checkbox" 
+                  className="accent-primary w-4 h-4 rounded"
+                  checked={allowResend}
+                  onChange={(e) => setAllowResend(e.target.checked)}
+                />
+                <span className="text-xs font-medium text-text">
+                  Allow re-sending to previously emailed contacts (for follow-ups or testing)
+                </span>
+              </label>
             </div>
             <div className="flex gap-4 mt-4">
               <Button variant="outline" onClick={() => setStep(1)}>Back</Button>

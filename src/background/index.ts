@@ -1,21 +1,33 @@
 // GMailer Background Service Worker (Thin Client)
 
+const BACKEND_URL = 'https://gmailer-3zlj.onrender.com';
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log("GMailer Extension Installed");
+  // Set up keep-alive alarm to prevent Render backend from sleeping
+  chrome.alarms.create('keepAlive', { periodInMinutes: 14 });
 });
 
-const action = (chrome as any).action || (chrome as any).browserAction;
+chrome.runtime.onStartup.addListener(() => {
+  chrome.alarms.create('keepAlive', { periodInMinutes: 14 });
+});
 
-if (action) {
-  action.onClicked.addListener(() => {
-    chrome.tabs.create({ url: "index.html" });
-  });
-}
+// Ping the backend every 14 minutes to keep it warm
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'keepAlive') {
+    fetch(`${BACKEND_URL}/`).catch(() => {
+      // Silently ignore - this is just a keep-alive ping
+    });
+  }
+});
+
+// Open the extension's full-page UI when the toolbar icon is clicked
+chrome.action.onClicked.addListener(() => {
+  chrome.tabs.create({ url: chrome.runtime.getURL("index.html") });
+});
 
 // Listen for messages from the React UI
 chrome.runtime.onMessage.addListener((request: any, sender: any, sendResponse: any) => {
-  // We keep GET_AUTH_TOKEN in case the UI still uses chrome.identity for any frontend-only Google integrations,
-  // but primary auth is now handled by the backend.
   if (request.type === "GET_AUTH_TOKEN") {
     chrome.identity.getAuthToken({ interactive: request.interactive }, function (token) {
       const runtime = chrome.runtime as any;
