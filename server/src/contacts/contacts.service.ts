@@ -19,12 +19,27 @@ export class ContactsService {
       select: { toEmail: true }
     });
     
-    const emailedSet = new Set(pastEmails.map(e => e.toEmail));
+    const emailedSet = new Set(pastEmails.map(e => e.toEmail.toLowerCase().trim()));
 
     return contacts.map(c => ({
       ...c,
-      hasBeenEmailed: emailedSet.has(c.email)
+      hasBeenEmailed: emailedSet.has(c.email.toLowerCase().trim())
     }));
+  }
+
+  async getSentEmails(userId: string) {
+    return this.prisma.emailQueue.findMany({
+      where: { 
+        userId, 
+        status: 'SENT' 
+      },
+      select: {
+        toEmail: true,
+        updatedAt: true,
+        campaign: { select: { id: true, name: true, subject: true } }
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
   }
 
   async create(userId: string, data: any) {

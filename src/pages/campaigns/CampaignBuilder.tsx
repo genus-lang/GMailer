@@ -33,8 +33,33 @@ export function CampaignBuilder() {
 
   const [selectedContactIds, setSelectedContactIds] = useState<Set<any>>(() => {
     const unemailed = contacts.filter(c => !c.hasBeenEmailed);
-    return new Set((unemailed.length > 0 ? unemailed : contacts).map(c => c.id));
+    return new Set((unemailed.length > 0 ? unemailed.slice(0, 450) : contacts.slice(0, 450)).map(c => c.id));
   });
+
+  const [recipientFilter, setRecipientFilter] = useState<'all' | 'recruiters' | 'my' | 'new'>('new');
+  const [recipientSearch, setRecipientSearch] = useState('');
+
+  const displayedContacts = useMemo(() => {
+    let result = contacts;
+    if (recipientFilter === 'recruiters') {
+      result = result.filter(c => c.isProtected);
+    } else if (recipientFilter === 'my') {
+      result = result.filter(c => !c.isProtected);
+    } else if (recipientFilter === 'new') {
+      result = result.filter(c => !c.hasBeenEmailed);
+    }
+
+    if (recipientSearch) {
+      const q = recipientSearch.toLowerCase();
+      result = result.filter(c => 
+        c.name.toLowerCase().includes(q) || 
+        c.email.toLowerCase().includes(q) ||
+        (c.variables?.company && c.variables.company.toLowerCase().includes(q)) ||
+        (c.variables?.role && c.variables.role.toLowerCase().includes(q))
+      );
+    }
+    return result;
+  }, [contacts, recipientFilter, recipientSearch]);
 
   useEffect(() => {
     if (initialTemplateId) {
@@ -110,14 +135,23 @@ export function CampaignBuilder() {
     }
 
     // Deduplicate recipients by email to prevent double-sending
-    const uniqueRecipients = [];
+    let uniqueRecipients = [];
     const seenEmails = new Set();
     for (const c of selectedContacts) {
-      const email = c.email.toLowerCase();
+      const email = c.email.toLowerCase().trim();
       if (!seenEmails.has(email)) {
         seenEmails.add(email);
         uniqueRecipients.push(c);
       }
+    }
+
+    if (!allowResend) {
+      const unemailedOnly = uniqueRecipients.filter(c => !c.hasBeenEmailed);
+      if (unemailedOnly.length === 0) {
+        alert("All selected recipients have already been emailed in past campaigns. Enable 'Allow re-sending' in campaign settings if you want to email them again.");
+        return;
+      }
+      uniqueRecipients = unemailedOnly;
     }
 
     setIsUploading(true);
@@ -239,31 +273,49 @@ export function CampaignBuilder() {
 
         {/* Step 2: Recipients */}
         {step === 2 && (
-          <div className="max-w-xl space-y-4">
+          <div className="max-w-2xl space-y-4">
             <h3 className="text-lg font-bold">Select Recipients</h3>
             <div className="p-4 bg-gray-50 border border-border rounded-lg space-y-4">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center flex-wrap gap-2">
                 <div>
-                  <p className="font-semibold">{selectedContacts.length} Contacts Selected</p>
-                  <p className="text-sm text-secondary">Select the contacts for this campaign.</p>
+                  <p className="font-semibold text-sm">
+                    {selectedContacts.length} Contacts Selected
+                  </p>
+                  <p className="text-xs text-secondary mt-0.5">
+                    {contacts.filter(c => !c.hasBeenEmailed).length.toLocaleString()} Available (Never Emailed) &bull; <span className="text-emerald-600 font-semibold">{contacts.filter(c => c.hasBeenEmailed).length.toLocaleString()} Already Emailed</span>
+                  </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button 
                     variant="outline" 
                     size="sm"
+                    className="text-xs h-8 border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 font-semibold"
+                    onClick={() => {
+                      const unemailedRecruiters = contacts.filter(c => c.isProtected && !c.hasBeenEmailed);
+                      const next450 = unemailedRecruiters.slice(0, 450).map(c => c.id);
+                      setSelectedContactIds(new Set(next450));
+                    }}
+                  >
+                    Select Next 450 New Recruiters
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="text-xs h-8"
                     onClick={() => {
                       const newContacts = contacts.filter(c => !c.hasBeenEmailed);
                       const next450 = newContacts.slice(0, 450).map(c => c.id);
                       setSelectedContactIds(new Set(next450));
                     }}
                   >
-                    Select Next 450 (New)
+                    Select Next 450 (All New)
                   </Button>
                   <Button 
                     variant="outline" 
                     size="sm"
+                    className="text-xs h-8"
                     onClick={() => {
-                      const selectable = allowResend ? contacts : contacts.filter(c => !c.hasBeenEmailed);
+                      const selectable = allowResend ? displayedContacts : displayedContacts.filter(c => !c.hasBeenEmailed);
                       const currentSelectableIds = new Set(selectable.map(c => c.id));
                       const isAllSelected = selectable.length > 0 && selectable.every(c => selectedContactIds.has(c.id));
                       
@@ -278,42 +330,112 @@ export function CampaignBuilder() {
                       }
                     }}
                   >
-                    {(allowResend ? contacts : contacts.filter(c => !c.hasBeenEmailed)).length > 0 && 
-                     (allowResend ? contacts : contacts.filter(c => !c.hasBeenEmailed)).every(c => selectedContactIds.has(c.id)) 
-                      ? 'Deselect All' 
-                      : 'Select All'}
+                    {(allowResend ? displayedContacts : displayedContacts.filter(c => !c.hasBeenEmailed)).length > 0 && 
+                     (allowResend ? displayedContacts : displayedContacts.filter(c => !c.hasBeenEmailed)).every(c => selectedContactIds.has(c.id)) 
+                      ? 'Deselect Filtered' 
+                      : 'Select Filtered'}
                   </Button>
                 </div>
               </div>
-              <div className="max-h-60 overflow-y-auto border border-border rounded-md bg-white">
-                {contacts.map(contact => (
-                  <label key={contact.id} className={`flex items-center gap-3 p-3 border-b border-border last:border-0 hover:bg-gray-50 ${(contact.hasBeenEmailed && !allowResend) ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
-                    <input 
-                      type="checkbox" 
-                      className="accent-primary w-4 h-4"
-                      checked={selectedContactIds.has(contact.id)}
-                      disabled={contact.hasBeenEmailed && !allowResend}
-                      onChange={(e) => {
-                        if (contact.hasBeenEmailed && !allowResend) return;
-                        const next = new Set(selectedContactIds);
-                        if (e.target.checked) next.add(contact.id);
-                        else next.delete(contact.id);
-                        setSelectedContactIds(next);
-                      }}
-                    />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold">{contact.name || contact.email}</p>
-                        {contact.hasBeenEmailed && (
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${allowResend ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}`}>
-                            {allowResend ? 'Previously Emailed' : 'Already Emailed'}
-                          </span>
-                        )}
+
+              {/* Recipient Filter Tabs & Search */}
+              <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-border">
+                <div className="flex bg-gray-200/50 p-0.5 rounded-lg border border-border text-xs">
+                  <button 
+                    type="button"
+                    onClick={() => setRecipientFilter('new')} 
+                    className={cn("px-2.5 py-1 font-semibold rounded transition-colors", recipientFilter === 'new' ? 'bg-white shadow-sm text-primary' : 'text-secondary hover:text-text')}
+                  >
+                    Not Emailed ({contacts.filter(c => !c.hasBeenEmailed).length.toLocaleString()})
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setRecipientFilter('recruiters')} 
+                    className={cn("px-2.5 py-1 font-semibold rounded transition-colors", recipientFilter === 'recruiters' ? 'bg-white shadow-sm text-purple-700' : 'text-secondary hover:text-purple-600')}
+                  >
+                    Recruiters ({contacts.filter(c => c.isProtected).length.toLocaleString()})
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setRecipientFilter('my')} 
+                    className={cn("px-2.5 py-1 font-semibold rounded transition-colors", recipientFilter === 'my' ? 'bg-white shadow-sm text-text' : 'text-secondary hover:text-text')}
+                  >
+                    My Contacts ({contacts.filter(c => !c.isProtected).length.toLocaleString()})
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setRecipientFilter('all')} 
+                    className={cn("px-2.5 py-1 font-semibold rounded transition-colors", recipientFilter === 'all' ? 'bg-white shadow-sm text-text' : 'text-secondary hover:text-text')}
+                  >
+                    All ({contacts.length.toLocaleString()})
+                  </button>
+                </div>
+                <div className="flex-1 min-w-[180px]">
+                  <Input 
+                    placeholder="Search name, email, company..." 
+                    className="h-8 text-xs bg-white border-border"
+                    value={recipientSearch}
+                    onChange={e => setRecipientSearch(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Recipients List */}
+              <div className="max-h-72 overflow-y-auto border border-border rounded-md bg-white">
+                {displayedContacts.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-secondary">
+                    No contacts match this filter.
+                  </div>
+                ) : (
+                  displayedContacts.map(contact => (
+                    <label 
+                      key={contact.id} 
+                      className={`flex items-center gap-3 p-2.5 border-b border-border last:border-0 hover:bg-gray-50/80 transition-colors ${
+                        (contact.hasBeenEmailed && !allowResend) ? 'opacity-50 bg-gray-50/40 cursor-not-allowed' : 'cursor-pointer'
+                      }`}
+                    >
+                      <input 
+                        type="checkbox" 
+                        className="accent-primary w-4 h-4 rounded"
+                        checked={selectedContactIds.has(contact.id)}
+                        disabled={contact.hasBeenEmailed && !allowResend}
+                        onChange={(e) => {
+                          if (contact.hasBeenEmailed && !allowResend) return;
+                          const next = new Set(selectedContactIds);
+                          if (e.target.checked) next.add(contact.id);
+                          else next.delete(contact.id);
+                          setSelectedContactIds(next);
+                        }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-xs font-semibold text-text truncate">{contact.name || contact.email}</p>
+                          {contact.isProtected && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 font-bold">
+                              Recruiter
+                            </span>
+                          )}
+                          {contact.hasBeenEmailed ? (
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                              allowResend ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-red-100 text-red-700 border border-red-200'
+                            }`}>
+                              {allowResend ? 'Previously Emailed' : 'Already Emailed'}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-semibold">
+                              New
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-secondary truncate mt-0.5">
+                          {contact.email}
+                          {contact.variables?.company ? ` • ${contact.variables.company}` : ''}
+                          {contact.variables?.role ? ` (${contact.variables.role})` : ''}
+                        </p>
                       </div>
-                      {contact.name && <p className="text-xs text-secondary">{contact.email}</p>}
-                    </div>
-                  </label>
-                ))}
+                    </label>
+                  ))
+                )}
               </div>
 
               <label className="flex items-center gap-2.5 pt-2 border-t border-border cursor-pointer select-none">

@@ -2,7 +2,7 @@ import { Header } from "@/components/Header/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Filter, Upload, Plus, Download } from "lucide-react";
+import { Search, Filter, Upload, Plus, Download, CheckCircle2, Mail, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useStore, Contact } from "@/store/useStore";
@@ -34,7 +34,7 @@ export function Contacts() {
   const [cleanedContacts, setCleanedContacts] = useState<any[]>([]);
   const [isCleaning, setIsCleaning] = useState(false);
   const [aiError, setAIError] = useState("");
-  const [contactFilter, setContactFilter] = useState<'all' | 'my' | 'premium'>('all');
+  const [contactFilter, setContactFilter] = useState<'all' | 'my' | 'premium' | 'emailed' | 'not_emailed'>('all');
 
   const handleAddManualContact = async () => {
     if (!newContactForm.name || !newContactForm.email) return;
@@ -207,12 +207,36 @@ export function Contacts() {
     URL.revokeObjectURL(url);
   };
 
+  const { totalCount, emailedCount, notEmailedCount, recruiterCount, myCount } = useMemo(() => {
+    let emailed = 0;
+    let notEmailed = 0;
+    let recruiter = 0;
+    let my = 0;
+    contacts.forEach(c => {
+      if (c.hasBeenEmailed) emailed++;
+      else notEmailed++;
+      if (c.isProtected) recruiter++;
+      else my++;
+    });
+    return {
+      totalCount: contacts.length,
+      emailedCount: emailed,
+      notEmailedCount: notEmailed,
+      recruiterCount: recruiter,
+      myCount: my
+    };
+  }, [contacts]);
+
   const filteredContacts = useMemo(() => {
     let result = contacts;
     if (contactFilter === 'my') {
       result = result.filter(c => !c.isProtected);
     } else if (contactFilter === 'premium') {
       result = result.filter(c => c.isProtected);
+    } else if (contactFilter === 'emailed') {
+      result = result.filter(c => c.hasBeenEmailed);
+    } else if (contactFilter === 'not_emailed') {
+      result = result.filter(c => !c.hasBeenEmailed);
     }
 
     if (searchQuery) {
@@ -221,6 +245,8 @@ export function Contacts() {
         (c) =>
           c.name.toLowerCase().includes(lowerQuery) ||
           c.email.toLowerCase().includes(lowerQuery) ||
+          (c.variables?.company && c.variables.company.toLowerCase().includes(lowerQuery)) ||
+          (c.variables?.role && c.variables.role.toLowerCase().includes(lowerQuery)) ||
           c.status.toLowerCase().includes(lowerQuery)
       );
     }
@@ -231,7 +257,12 @@ export function Contacts() {
       <Header />
       <div className="p-8 pt-4 flex-1 flex flex-col">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-text">Contacts</h2>
+          <div>
+            <h2 className="text-2xl font-bold text-text">Contacts</h2>
+            <p className="text-xs text-secondary mt-0.5">
+              {totalCount.toLocaleString()} Total &bull; <span className="text-emerald-600 font-semibold">{emailedCount.toLocaleString()} Already Emailed</span> &bull; <span className="text-primary font-semibold">{notEmailedCount.toLocaleString()} Available (Never Emailed)</span>
+            </p>
+          </div>
           <div className="flex items-center gap-3">
             <Button onClick={handleExport} variant="outline" className="text-secondary bg-white shadow-sm border-border rounded-lg h-10 px-4 flex items-center gap-2 hover:text-text hover:bg-gray-50">
               <Download className="w-4 h-4" /> Export
@@ -279,7 +310,13 @@ export function Contacts() {
                     return;
                   }
                   
-                  const premiumContacts: Contact[] = premiumContactsData as Contact[];
+                  const emailedEmailsSet = new Set(
+                    contacts.filter(c => c.hasBeenEmailed).map(c => c.email.toLowerCase().trim())
+                  );
+                  const premiumContacts: Contact[] = (premiumContactsData as Contact[]).map(c => ({
+                    ...c,
+                    hasBeenEmailed: emailedEmailsSet.has(c.email.toLowerCase().trim())
+                  }));
                   
                   setContacts([...contacts, ...premiumContacts]);
                 } else {
@@ -306,16 +343,45 @@ export function Contacts() {
         </div>
 
         <div className="bg-card rounded-xl border border-border shadow-soft flex-1 flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center gap-4 bg-gray-50/50">
-            <div className="flex bg-gray-200/50 p-1 rounded-lg border border-border">
-              <button onClick={() => setContactFilter('all')} className={cn("px-3 py-1.5 text-sm font-medium rounded-md transition-colors", contactFilter === 'all' ? 'bg-white shadow-sm text-text' : 'text-secondary hover:text-text')}>All</button>
-              <button onClick={() => setContactFilter('my')} className={cn("px-3 py-1.5 text-sm font-medium rounded-md transition-colors", contactFilter === 'my' ? 'bg-white shadow-sm text-text' : 'text-secondary hover:text-text')}>My Contacts</button>
-              <button onClick={() => setContactFilter('premium')} className={cn("px-3 py-1.5 text-sm font-medium rounded-md transition-colors", contactFilter === 'premium' ? 'bg-white shadow-sm text-text' : 'text-secondary hover:text-text')}>Recruiters</button>
+          <div className="p-4 border-b border-border flex items-center gap-4 bg-gray-50/50 flex-wrap">
+            <div className="flex bg-gray-200/50 p-1 rounded-lg border border-border gap-1 flex-wrap">
+              <button 
+                onClick={() => setContactFilter('all')} 
+                className={cn("px-3 py-1.5 text-xs font-semibold rounded-md transition-colors", contactFilter === 'all' ? 'bg-white shadow-sm text-text' : 'text-secondary hover:text-text')}
+              >
+                All ({totalCount.toLocaleString()})
+              </button>
+              <button 
+                onClick={() => setContactFilter('premium')} 
+                className={cn("px-3 py-1.5 text-xs font-semibold rounded-md transition-colors", contactFilter === 'premium' ? 'bg-white shadow-sm text-purple-700' : 'text-secondary hover:text-purple-600')}
+              >
+                Recruiters ({recruiterCount.toLocaleString()})
+              </button>
+              <button 
+                onClick={() => setContactFilter('my')} 
+                className={cn("px-3 py-1.5 text-xs font-semibold rounded-md transition-colors", contactFilter === 'my' ? 'bg-white shadow-sm text-text' : 'text-secondary hover:text-text')}
+              >
+                My Contacts ({myCount.toLocaleString()})
+              </button>
+              <button 
+                onClick={() => setContactFilter('emailed')} 
+                className={cn("px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1", contactFilter === 'emailed' ? 'bg-white shadow-sm text-emerald-700' : 'text-secondary hover:text-emerald-700')}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                Already Emailed ({emailedCount.toLocaleString()})
+              </button>
+              <button 
+                onClick={() => setContactFilter('not_emailed')} 
+                className={cn("px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1", contactFilter === 'not_emailed' ? 'bg-white shadow-sm text-primary' : 'text-secondary hover:text-primary')}
+              >
+                <Mail className="w-3.5 h-3.5 text-primary" />
+                Not Emailed ({notEmailedCount.toLocaleString()})
+              </button>
             </div>
             <div className="relative flex-1 max-w-sm ml-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary" />
               <Input 
-                placeholder="Search contacts..." 
+                placeholder="Search contacts, company, role..." 
                 className="pl-9 bg-white border-border h-10 rounded-lg shadow-sm"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -327,10 +393,10 @@ export function Contacts() {
             <Table>
               <TableHeader className="bg-gray-50/50">
                 <TableRow className="border-border">
-                  <TableHead className="w-[250px] font-semibold text-secondary">Name</TableHead>
+                  <TableHead className="w-[280px] font-semibold text-secondary">Name & Email</TableHead>
                   <TableHead className="font-semibold text-secondary">Company</TableHead>
                   <TableHead className="font-semibold text-secondary">Role / Type</TableHead>
-                  <TableHead className="font-semibold text-secondary">Status</TableHead>
+                  <TableHead className="font-semibold text-secondary">Outreach Status</TableHead>
                   <TableHead className="font-semibold text-secondary text-right">Date Added</TableHead>
                 </TableRow>
               </TableHeader>
@@ -354,7 +420,7 @@ export function Contacts() {
                               <span className="font-semibold text-text">{contact.name}</span>
                               {contact.isProtected && (
                                 <Badge variant="outline" className="bg-purple-50 text-purple-600 border-purple-200 text-[10px] h-4 py-0 px-1.5 flex items-center gap-1">
-                                  <ShieldCheck className="w-2.5 h-2.5" /> Premium
+                                  <ShieldCheck className="w-2.5 h-2.5" /> Recruiter
                                 </Badge>
                               )}
                             </div>
@@ -371,14 +437,15 @@ export function Contacts() {
                         <span className="font-medium text-text">{contact.variables?.role || '—'}</span>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={cn(
-                          "font-medium",
-                          contact.status === 'Active' ? 'bg-green-50 text-success-light border-green-200' :
-                          contact.status === 'Bounced' ? 'bg-red-50 text-danger border-red-200' :
-                          'bg-amber-50 text-warning border-amber-200'
-                        )}>
-                          {contact.status}
-                        </Badge>
+                        {contact.hasBeenEmailed ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-300 text-xs font-bold rounded-full">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Already Emailed
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold rounded-full">
+                            <Mail className="w-3.5 h-3.5 text-blue-500" /> Available (New)
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right text-secondary font-medium">
                         {contact.date}
@@ -392,7 +459,7 @@ export function Contacts() {
           
           <div className="p-4 border-t border-border bg-gray-50/50 flex items-center justify-between">
             <span className="text-sm text-secondary font-medium">
-              Showing {filteredContacts.length} of {contacts.length} contacts
+              Showing {filteredContacts.length.toLocaleString()} of {contacts.length.toLocaleString()} contacts
             </span>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" className="bg-white text-secondary border-border" disabled>Previous</Button>

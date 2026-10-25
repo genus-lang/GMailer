@@ -5,6 +5,8 @@ import { AuthService } from '../services/auth.service';
 import { SubscriptionService } from '../services/subscription.service';
 import { ApiService } from '../services/api.service';
 
+import premiumContactsData from '../data/premiumContacts.json';
+
 export type QueueStatus = 'Sent' | 'Sending' | 'Pending' | 'Paused' | 'Failed';
 
 export interface QueueItem {
@@ -17,7 +19,7 @@ export interface QueueItem {
 }
 
 export interface Contact {
-  id: number;
+  id: number | string;
   name: string;
   email: string;
   status: 'Active' | 'Bounced' | 'Unsubscribed';
@@ -25,6 +27,8 @@ export interface Contact {
   variables?: Record<string, string>;
   isProtected?: boolean;
   hasBeenEmailed?: boolean;
+  lastEmailedAt?: string;
+  campaignName?: string;
 }
 
 export interface CampaignState {
@@ -413,11 +417,12 @@ export const useStore = create<GMailerState>((set, get) => ({
       }
 
       // 2. Fetch Additional Data Concurrently to speed up login
-      const [campaigns, rawContacts, builtinTemplates, customTemplates] = await Promise.all([
+      const [campaigns, rawContacts, builtinTemplates, customTemplates, backendSentEmails] = await Promise.all([
         ApiService.get<any[]>('/campaigns', token).catch(() => []),
         ApiService.get<any[]>('/contacts', token).catch(() => []),
         ApiService.get<any[]>('/templates/builtin', token).catch(() => []),
-        ApiService.get<any[]>('/templates', token).catch(() => [])
+        ApiService.get<any[]>('/templates', token).catch(() => []),
+        ApiService.get<any[]>('/contacts/sent-emails', token).catch(() => [])
       ]);
 
       // Determine if there is an active running or paused campaign
@@ -484,14 +489,23 @@ export const useStore = create<GMailerState>((set, get) => ({
         set({ queueItems: [], activeCampaign: null, campaignHistory: mappedCampaigns });
       }
 
-      // Populate sentHistory from all campaign emails
+      // Populate sentHistory and sentEmailSet from all campaign emails & sent-emails endpoint
       const historyItems: any[] = [];
       const sentEmailSet = new Set<string>();
+      const sentEmailMap = new Map<string, { sentAt: string, campaignName: string }>();
+
       campaigns.forEach((c: any) => {
         if (c.emails && Array.isArray(c.emails)) {
           c.emails.forEach((e: any) => {
             if (e.toEmail && ['SENT', 'PROCESSING', 'PENDING'].includes(e.status)) {
-              sentEmailSet.add(e.toEmail.toLowerCase().trim());
+              const norm = e.toEmail.toLowerCase().trim();
+              sentEmailSet.add(norm);
+              if (e.status === 'SENT') {
+                sentEmailMap.set(norm, {
+                  sentAt: e.updatedAt,
+                  campaignName: c.name
+                });
+              }
             }
           });
           c.emails.filter((e: any) => e.status === 'SENT').forEach((e: any) => {
@@ -508,11 +522,29 @@ export const useStore = create<GMailerState>((set, get) => ({
           });
         }
       });
+
+      // Incorporate all authoritative sent emails from backend
+      if (Array.isArray(backendSentEmails)) {
+        backendSentEmails.forEach((se: any) => {
+          if (se.toEmail) {
+            const norm = se.toEmail.toLowerCase().trim();
+            sentEmailSet.add(norm);
+            if (!sentEmailMap.has(norm)) {
+              sentEmailMap.set(norm, {
+                sentAt: se.updatedAt,
+                campaignName: se.campaign?.name || 'Previous Campaign'
+              });
+            }
+          }
+        });
+      }
+
       set({ sentHistory: historyItems });
 
-      // 3. Map Contacts
+      // 3. Map User Contacts with hasBeenEmailed status
       const mappedContacts = rawContacts.map((c: any) => {
         const emailNorm = (c.email || '').toLowerCase().trim();
+        const sentInfo = sentEmailMap.get(emailNorm);
         return {
           id: c.id,
           name: c.name || '',
@@ -521,13 +553,31 @@ export const useStore = create<GMailerState>((set, get) => ({
           date: new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
           variables: { company: c.company || '', role: c.role || '' },
           isProtected: false,
-          hasBeenEmailed: sentEmailSet.has(emailNorm)
+          hasBeenEmailed: sentEmailSet.has(emailNorm),
+          lastEmailedAt: sentInfo?.sentAt,
+          campaignName: sentInfo?.campaignName
         };
       });
       
-      // Preserve premium contacts that are already loaded in memory
-      const currentPremiumContacts = get().contacts.filter(c => c.isProtected);
-      set({ contacts: [...mappedContacts, ...currentPremiumContacts] });
+      // Auto-load or preserve recruiter contacts (4,000 database) for MAX users
+      let currentPremiumContacts = get().contacts.filter(c => c.isProtected);
+      if (currentPremiumContacts.length === 0 && (userData.plan === 'MAX' || userData.plan === 'PRO')) {
+        currentPremiumContacts = (premiumContactsData as Contact[]);
+      }
+
+      const updatedPremiumContacts = currentPremiumContacts.map(c => {
+        const emailNorm = (c.email || '').toLowerCase().trim();
+        const sentInfo = sentEmailMap.get(emailNorm);
+        const isEmailed = sentEmailSet.has(emailNorm);
+        return {
+          ...c,
+          hasBeenEmailed: isEmailed,
+          lastEmailedAt: sentInfo?.sentAt || c.lastEmailedAt,
+          campaignName: sentInfo?.campaignName || c.campaignName
+        };
+      });
+
+      set({ contacts: [...mappedContacts, ...updatedPremiumContacts] });
 
       // 4. Set Templates
       set({ builtinTemplates: builtinTemplates || [] });
