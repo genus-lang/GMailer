@@ -95,16 +95,33 @@ export class QueueService {
   async removeCampaignJobs(campaignId: string): Promise<number> {
     let removedCount = 0;
     try {
-      const jobs = await this.emailQueue.getJobs(['waiting', 'delayed']);
-      for (const job of jobs) {
-        if (job?.data?.campaignId === campaignId) {
-          try {
-            await job.remove();
-            removedCount++;
-            this.logger.log(`[QueueService] Removed pending job ${job.id} for campaign ${campaignId}`);
-          } catch (e: any) {
-            this.logger.warn(`[QueueService] Could not remove job ${job.id}: ${e.message}`);
+      const batchSize = 500;
+      let start = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const jobs = await this.emailQueue.getJobs(['waiting', 'delayed', 'paused'], start, start + batchSize - 1);
+        if (!jobs || jobs.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        for (const job of jobs) {
+          if (job?.data?.campaignId === campaignId) {
+            try {
+              await job.remove();
+              removedCount++;
+              this.logger.log(`[QueueService] Removed pending job ${job.id} for campaign ${campaignId}`);
+            } catch (e: any) {
+              this.logger.warn(`[QueueService] Could not remove job ${job.id}: ${e.message}`);
+            }
           }
+        }
+
+        if (jobs.length < batchSize) {
+          hasMore = false;
+        } else {
+          start += batchSize;
         }
       }
     } catch (err: any) {

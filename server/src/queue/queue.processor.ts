@@ -39,10 +39,15 @@ export class EmailQueueProcessor extends WorkerHost {
       return { skipped: true, reason: 'Already sent' };
     }
 
-    // Guard against STOPPED or COMPLETED campaigns
-    if (queueItem.campaign.status === 'STOPPED' || queueItem.campaign.status === 'COMPLETED' || queueItem.status === 'STOPPED') {
-      this.logger.log(`[QueueProcessor] Job ${job.id}: Campaign ${currentCampaignId} is ${queueItem.campaign.status}. Aborting.`);
-      if (queueItem.status !== 'STOPPED' && queueItem.status !== 'SENT') {
+    // Guard against STOPPED, COMPLETED, or FAILED campaigns/queue items
+    if (
+      queueItem.campaign.status === 'STOPPED' || 
+      queueItem.campaign.status === 'COMPLETED' || 
+      queueItem.status === 'STOPPED' || 
+      queueItem.status === 'FAILED'
+    ) {
+      this.logger.log(`[QueueProcessor] Job ${job.id}: Campaign ${currentCampaignId} is ${queueItem.campaign.status} / item is ${queueItem.status}. Aborting.`);
+      if (queueItem.status !== 'STOPPED' && queueItem.status !== 'SENT' && queueItem.status !== 'FAILED') {
         await this.prisma.emailQueue.update({
           where: { id: emailQueueId },
           data: { status: 'STOPPED', error: 'Campaign was stopped' }
