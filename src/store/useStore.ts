@@ -5,7 +5,7 @@ import { AuthService } from '../services/auth.service';
 import { SubscriptionService } from '../services/subscription.service';
 import { ApiService } from '../services/api.service';
 
-export type QueueStatus = 'Sent' | 'Sending' | 'Pending' | 'Failed';
+export type QueueStatus = 'Sent' | 'Sending' | 'Pending' | 'Paused' | 'Failed';
 
 export interface QueueItem {
   id: string | number;
@@ -33,7 +33,7 @@ export interface CampaignState {
   total: number;
   sent: number;
   failed: number;
-  status: 'Sending' | 'Paused' | 'Completed';
+  status: 'Sending' | 'Paused' | 'Stopped' | 'Completed';
   nextEmailIn: string;
   createdOn: string;
 }
@@ -58,7 +58,7 @@ export interface Template {
 export interface CampaignHistoryItem {
   id: string;
   name: string;
-  status: 'Completed' | 'Running' | 'Paused';
+  status: 'Completed' | 'Running' | 'Paused' | 'Stopped';
   sent: number;
   total: number;
   failed: number;
@@ -97,7 +97,8 @@ interface GMailerState {
   
   // Campaign
   activeCampaign: CampaignState | null;
-  toggleCampaignStatus: () => void;
+  isActionLoading: boolean;
+  toggleCampaignStatus: () => Promise<void>;
   
   // Queue
   queueItems: QueueItem[];
@@ -226,13 +227,15 @@ export const useStore = create<GMailerState>((set, get) => ({
   },
   
   activeCampaign: null,
-  toggleCampaignStatus: () => {
-    const { activeCampaign, pauseCampaign, resumeCampaign } = get();
-    if (!activeCampaign) return;
+  isActionLoading: false,
+
+  toggleCampaignStatus: async () => {
+    const { activeCampaign, pauseCampaign, resumeCampaign, isActionLoading } = get();
+    if (!activeCampaign || isActionLoading) return;
     if (activeCampaign.status === 'Sending') {
-      pauseCampaign();
-    } else {
-      resumeCampaign();
+      await pauseCampaign();
+    } else if (activeCampaign.status === 'Paused') {
+      await resumeCampaign();
     }
   },
 
@@ -280,44 +283,96 @@ export const useStore = create<GMailerState>((set, get) => ({
   },
   
   pauseCampaign: async () => {
-    const { activeCampaign, jwtToken, syncWithStorage } = get();
-    if (!activeCampaign || !jwtToken) return;
+    const { activeCampaign, jwtToken, isActionLoading, syncWithStorage } = get();
+    if (!activeCampaign || !jwtToken || isActionLoading) return;
+
+    set({ isActionLoading: true });
     try {
       await ApiService.post(`/campaigns/${activeCampaign.id}/pause`, {}, jwtToken);
-      set({
-        activeCampaign: { ...activeCampaign, status: 'Paused' }
-      });
+      
+      // Update local state ONLY after backend confirms state change
+      set((state) => ({
+        activeCampaign: state.activeCampaign ? {
+          ...state.activeCampaign,
+          status: 'Paused',
+          nextEmailIn: '—'
+        } : null,
+        queueItems: state.queueItems.map(item => 
+          item.status === 'Pending' || item.status === 'Sending'
+            ? { ...item, status: 'Paused' as QueueStatus }
+            : item
+        )
+      }));
+
       syncWithStorage();
-    } catch (e) {
-      console.error("Failed to pause campaign", e);
+    } catch (e: any) {
+      console.error("Failed to pause campaign:", e);
+      alert(`Failed to pause campaign: ${e.message || 'Unknown error'}`);
+    } finally {
+      set({ isActionLoading: false });
     }
   },
 
   resumeCampaign: async () => {
-    const { activeCampaign, jwtToken, syncWithStorage } = get();
-    if (!activeCampaign || !jwtToken) return;
+    const { activeCampaign, jwtToken, isActionLoading, syncWithStorage } = get();
+    if (!activeCampaign || !jwtToken || isActionLoading) return;
+
+    set({ isActionLoading: true });
     try {
       await ApiService.post(`/campaigns/${activeCampaign.id}/resume`, {}, jwtToken);
-      set({
-        activeCampaign: { ...activeCampaign, status: 'Sending' }
-      });
+
+      // Update local state ONLY after backend confirms state change
+      set((state) => ({
+        activeCampaign: state.activeCampaign ? {
+          ...state.activeCampaign,
+          status: 'Sending',
+          nextEmailIn: 'Processing...'
+        } : null,
+        queueItems: state.queueItems.map(item => 
+          item.status === 'Paused'
+            ? { ...item, status: 'Pending' as QueueStatus }
+            : item
+        )
+      }));
+
       syncWithStorage();
-    } catch (e) {
-      console.error("Failed to resume campaign", e);
+    } catch (e: any) {
+      console.error("Failed to resume campaign:", e);
+      alert(`Failed to resume campaign: ${e.message || 'Unknown error'}`);
+    } finally {
+      set({ isActionLoading: false });
     }
   },
 
   stopCampaign: async () => {
-    const { activeCampaign, jwtToken, syncWithStorage } = get();
-    if (!activeCampaign || !jwtToken) return;
+    const { activeCampaign, jwtToken, isActionLoading, syncWithStorage, fetchInitialData } = get();
+    if (!activeCampaign || !jwtToken || isActionLoading) return;
+
+    const confirmed = confirm(`Are you sure you want to stop campaign "${activeCampaign.name}"? All remaining unsent emails will be cancelled.`);
+    if (!confirmed) return;
+
+    set({ isActionLoading: true });
     try {
       await ApiService.post(`/campaigns/${activeCampaign.id}/stop`, {}, jwtToken);
-      set({
-        activeCampaign: { ...activeCampaign, status: 'Completed' }
-      });
+
+      // Clear active campaign on dashboard and invalidate queue items
+      set((state) => ({
+        activeCampaign: null,
+        queueItems: state.queueItems.map(item => 
+          item.status === 'Pending' || item.status === 'Sending' || item.status === 'Paused'
+            ? { ...item, status: 'Failed' as QueueStatus, error: 'Campaign stopped by user' }
+            : item
+        )
+      }));
+
+      // Refresh campaigns from backend to ensure consistent state
+      await fetchInitialData();
       syncWithStorage();
-    } catch (e) {
-      console.error("Failed to stop campaign", e);
+    } catch (e: any) {
+      console.error("Failed to stop campaign:", e);
+      alert(`Failed to stop campaign: ${e.message || 'Unknown error'}`);
+    } finally {
+      set({ isActionLoading: false });
     }
   },
   
@@ -364,8 +419,8 @@ export const useStore = create<GMailerState>((set, get) => ({
         ApiService.get<any[]>('/templates', token).catch(() => [])
       ]);
 
-      // Determine if there is an active running campaign
-      const active = campaigns.find((c: any) => c.status === 'RUNNING');
+      // Determine if there is an active running or paused campaign
+      const active = campaigns.find((c: any) => c.status === 'RUNNING' || c.status === 'PAUSED');
       
       const mappedCampaigns = campaigns.map((c: any) => {
         let sentCount = c.stats?.sent || 0;
@@ -380,10 +435,16 @@ export const useStore = create<GMailerState>((set, get) => ({
            openRate = Math.max(12, Math.min(38, Math.round(sentCount * 0.4))) + "%";
         }
 
+        let displayStatus: 'Completed' | 'Running' | 'Paused' | 'Stopped' = 'Completed';
+        if (c.status === 'RUNNING') displayStatus = 'Running';
+        else if (c.status === 'PAUSED') displayStatus = 'Paused';
+        else if (c.status === 'STOPPED') displayStatus = 'Stopped';
+        else if (c.status === 'COMPLETED') displayStatus = 'Completed';
+
         return {
           id: c.id,
           name: c.name,
-          status: c.status === 'RUNNING' ? 'Sending' : (c.status === 'COMPLETED' ? 'Completed' : c.status),
+          status: displayStatus,
           total: c.stats?.total || sentCount,
           failed: c.stats?.failed || 0,
           sent: sentCount,
@@ -397,7 +458,10 @@ export const useStore = create<GMailerState>((set, get) => ({
           id: e.id,
           name: e.toEmail.split('@')[0],
           email: e.toEmail,
-          status: e.status === 'SENT' ? 'Sent' : (e.status === 'FAILED' ? 'Failed' : (e.status === 'PROCESSING' ? 'Sending' : 'Pending')),
+          status: e.status === 'SENT' ? ('Sent' as QueueStatus) : 
+                  (e.status === 'FAILED' || e.status === 'STOPPED') ? ('Failed' as QueueStatus) : 
+                  e.status === 'PROCESSING' ? ('Sending' as QueueStatus) : 
+                  e.status === 'PAUSED' ? ('Paused' as QueueStatus) : ('Pending' as QueueStatus),
           time: new Date(e.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }));
         
@@ -408,9 +472,9 @@ export const useStore = create<GMailerState>((set, get) => ({
              name: active.name,
              total: active.stats?.total || (active.emails?.length || 0),
              sent: active.stats?.sent || (active.emails?.filter((e: any) => e.status === 'SENT').length || 0),
-             failed: active.stats?.failed || (active.emails?.filter((e: any) => e.status === 'FAILED').length || 0),
-             status: 'Sending',
-             nextEmailIn: 'Processing...',
+             failed: active.stats?.failed || (active.emails?.filter((e: any) => e.status === 'FAILED' || e.status === 'STOPPED').length || 0),
+             status: active.status === 'PAUSED' ? 'Paused' : 'Sending',
+             nextEmailIn: active.status === 'PAUSED' ? '—' : 'Processing...',
              createdOn: active.createdAt
            },
            campaignHistory: mappedCampaigns

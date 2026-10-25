@@ -1,9 +1,11 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
 
 @Injectable()
 export class CampaignsService {
+  private readonly logger = new Logger(CampaignsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly queueService: QueueService,
@@ -81,40 +83,133 @@ export class CampaignsService {
   }
 
   async pause(userId: string, id: string) {
-    const campaign = await this.prisma.campaign.update({
+    const campaign = await this.prisma.campaign.findUnique({
       where: { id, userId },
-      data: { status: 'PAUSED' }
     });
-    // Optional: could also update PENDING queue items to PAUSED, but our processor can just check campaign status if needed, 
-    // or we can update queue directly:
+
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    if (campaign.status === 'PAUSED') {
+      return campaign;
+    }
+
+    if (campaign.status !== 'RUNNING') {
+      throw new BadRequestException(`Cannot pause campaign with status "${campaign.status}". Only RUNNING campaigns can be paused.`);
+    }
+
+    // 1. Atomically update Campaign status to PAUSED in DB
+    const updated = await this.prisma.campaign.update({
+      where: { id },
+      data: { status: 'PAUSED' },
+    });
+
+    // 2. Put any PENDING or in-flight PROCESSING queue items on hold in DB
     await this.prisma.emailQueue.updateMany({
-      where: { campaignId: id, status: 'PENDING' },
-      data: { status: 'PAUSED' }
+      where: { campaignId: id, status: { in: ['PENDING', 'PROCESSING'] } },
+      data: { status: 'PAUSED' },
     });
-    return campaign;
+
+    // 3. Remove pending/delayed jobs from BullMQ so worker halts pulling them
+    await this.queueService.removeCampaignJobs(id);
+
+    this.logger.log(`[CampaignsService] Campaign ${id} paused by user ${userId}`);
+    return updated;
   }
 
   async resume(userId: string, id: string) {
-    const campaign = await this.prisma.campaign.update({
+    const campaign = await this.prisma.campaign.findUnique({
       where: { id, userId },
-      data: { status: 'RUNNING' }
     });
+
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    if (campaign.status === 'RUNNING') {
+      return campaign;
+    }
+
+    if (campaign.status !== 'PAUSED') {
+      throw new BadRequestException(`Cannot resume campaign with status "${campaign.status}". Only PAUSED campaigns can be resumed.`);
+    }
+
+    // 1. Find all remaining unsent emails
+    const unsentEmails = await this.prisma.emailQueue.findMany({
+      where: {
+        campaignId: id,
+        status: { in: ['PAUSED', 'PENDING'] },
+      },
+    });
+
+    if (unsentEmails.length === 0) {
+      // Nothing left to send, mark completed
+      const completed = await this.prisma.campaign.update({
+        where: { id },
+        data: { status: 'COMPLETED' },
+      });
+      return completed;
+    }
+
+    // 2. Atomically update Campaign status to RUNNING
+    const updated = await this.prisma.campaign.update({
+      where: { id },
+      data: { status: 'RUNNING' },
+    });
+
+    // 3. Update unsent emails from PAUSED back to PENDING
     await this.prisma.emailQueue.updateMany({
       where: { campaignId: id, status: 'PAUSED' },
-      data: { status: 'PENDING' }
+      data: { status: 'PENDING' },
     });
-    return campaign;
+
+    // 4. Re-queue only the remaining unsent emails into BullMQ
+    for (const emailRecord of unsentEmails) {
+      await this.queueService.addExistingEmailToQueue(
+        userId,
+        emailRecord.id,
+        id,
+        emailRecord.toEmail,
+        campaign.subject || '',
+        campaign.body || '',
+        campaign.attachmentPath || undefined,
+      );
+    }
+
+    this.logger.log(`[CampaignsService] Campaign ${id} resumed by user ${userId}. Re-queued ${unsentEmails.length} unsent emails.`);
+    return updated;
   }
 
   async stop(userId: string, id: string) {
-    const campaign = await this.prisma.campaign.update({
+    const campaign = await this.prisma.campaign.findUnique({
       where: { id, userId },
-      data: { status: 'COMPLETED' }
     });
+
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    if (campaign.status === 'STOPPED' || campaign.status === 'COMPLETED') {
+      return campaign;
+    }
+
+    // 1. Atomically update Campaign status to STOPPED
+    const updated = await this.prisma.campaign.update({
+      where: { id },
+      data: { status: 'STOPPED' },
+    });
+
+    // 2. Invalidate / cancel all remaining unsent emails in EmailQueue
     await this.prisma.emailQueue.updateMany({
-      where: { campaignId: id, status: { in: ['PENDING', 'PAUSED'] } },
-      data: { status: 'FAILED', error: 'Campaign stopped' }
+      where: { campaignId: id, status: { in: ['PENDING', 'PAUSED', 'PROCESSING'] } },
+      data: { status: 'STOPPED', error: 'Campaign was stopped by user' },
     });
-    return campaign;
+
+    // 3. Remove all pending/delayed jobs from BullMQ
+    await this.queueService.removeCampaignJobs(id);
+
+    this.logger.log(`[CampaignsService] Campaign ${id} stopped by user ${userId}`);
+    return updated;
   }
 }

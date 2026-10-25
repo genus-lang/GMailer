@@ -12,23 +12,18 @@ const getStatusColor = (status: QueueStatus) => {
     case 'Sent': return { color: "text-success-light", bg: "bg-green-50", icon: CheckCircle2 };
     case 'Sending': return { color: "text-blue-500", bg: "bg-blue-50", icon: Send };
     case 'Pending': return { color: "text-warning", bg: "bg-amber-50", icon: Clock };
+    case 'Paused': return { color: "text-amber-600", bg: "bg-amber-50", icon: Pause };
     case 'Failed': return { color: "text-danger", bg: "bg-red-50", icon: XCircle };
     default: return { color: "text-secondary", bg: "bg-gray-100", icon: Clock };
   }
 };
 
 export function Queue() {
-  const { queueItems, activeCampaign, toggleCampaignStatus } = useStore();
+  const { queueItems, activeCampaign, toggleCampaignStatus, stopCampaign, isActionLoading } = useStore();
   const [search, setSearch] = useState("");
 
   const handleCancel = () => {
-    if (confirm("Are you sure you want to cancel the active campaign? All pending emails will be aborted.")) {
-      if (typeof chrome !== 'undefined' && chrome.runtime) {
-        (chrome.runtime.sendMessage as any)({ type: 'PAUSE_ENGINE' }, () => {
-          chrome.storage.local.set({ activeCampaign: null, gmailer_queue: [] });
-        });
-      }
-    }
+    stopCampaign();
   };
 
   const filteredQueue = useMemo(() => {
@@ -75,9 +70,12 @@ export function Queue() {
                   variant="outline" 
                   size="sm" 
                   className="h-9 gap-2"
+                  disabled={isActionLoading}
                   onClick={toggleCampaignStatus}
                 >
-                  {activeCampaign.status === 'Sending' ? (
+                  {isActionLoading ? (
+                    'Updating...'
+                  ) : activeCampaign.status === 'Sending' ? (
                     <><Pause className="w-4 h-4" /> Pause</>
                   ) : (
                     <><Play className="w-4 h-4" /> Resume</>
@@ -86,10 +84,11 @@ export function Queue() {
                 <Button 
                   variant="outline" 
                   size="sm"
-                  className="h-9 gap-2 text-danger hover:text-danger hover:bg-danger-light border-danger/20"
+                  className="h-9 gap-2 text-danger hover:text-danger hover:bg-danger-light border-danger/20 disabled:opacity-50"
+                  disabled={isActionLoading}
                   onClick={handleCancel}
                 >
-                  <Square className="w-4 h-4" /> Cancel
+                  <Square className="w-4 h-4" /> Stop
                 </Button>
               </div>
             )}

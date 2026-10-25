@@ -10,6 +10,7 @@ const getStatusColor = (status: QueueStatus) => {
     case 'Sent': return { color: "text-success-light", bg: "bg-green-50" };
     case 'Sending': return { color: "text-blue-500", bg: "bg-blue-50" };
     case 'Pending': return { color: "text-warning", bg: "bg-amber-50" };
+    case 'Paused': return { color: "text-amber-600", bg: "bg-amber-50" };
     case 'Failed': return { color: "text-danger", bg: "bg-red-50" };
     default: return { color: "text-secondary", bg: "bg-gray-100" };
   }
@@ -21,7 +22,7 @@ export function QueuePanel() {
   const filteredItems = useMemo(() => {
     if (queueFilter === 'all') return queueItems;
     if (queueFilter === 'sent') return queueItems.filter(i => i.status === 'Sent');
-    if (queueFilter === 'pending') return queueItems.filter(i => i.status === 'Pending' || i.status === 'Sending');
+    if (queueFilter === 'pending') return queueItems.filter(i => i.status === 'Pending' || i.status === 'Sending' || i.status === 'Paused');
     if (queueFilter === 'failed') return queueItems.filter(i => i.status === 'Failed');
     return queueItems;
   }, [queueItems, queueFilter]);

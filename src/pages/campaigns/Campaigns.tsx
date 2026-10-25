@@ -6,7 +6,7 @@ import { LIMITS } from "@/config/limits";
 import { useNavigate } from "react-router-dom";
 
 export function Campaigns() {
-  const { activeCampaign, pauseCampaign, resumeCampaign, campaignHistory, userPlan, setUpgradeDialogOpen } = useStore();
+  const { activeCampaign, pauseCampaign, resumeCampaign, stopCampaign, isActionLoading, campaignHistory, userPlan, setUpgradeDialogOpen } = useStore();
   const navigate = useNavigate();
 
   const totalCampaigns = campaignHistory.length + (activeCampaign ? 1 : 0);
@@ -41,23 +41,25 @@ export function Campaigns() {
           <div className="mb-8 p-6 bg-primary-light/5 border border-primary/20 rounded-2xl">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
+                <div className={`w-3 h-3 rounded-full ${activeCampaign.status === 'Sending' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                 <h3 className="font-bold text-lg">{activeCampaign.name}</h3>
-                <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">
+                <span className={`px-3 py-1 text-xs font-bold rounded-full ${
+                  activeCampaign.status === 'Sending' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                }`}>
                   {activeCampaign.status}
                 </span>
               </div>
               <div className="flex gap-2">
                 {activeCampaign.status === 'Sending' ? (
-                  <Button variant="outline" size="sm" onClick={pauseCampaign}>
-                    <Pause className="w-4 h-4 mr-1" /> Pause
+                  <Button variant="outline" size="sm" onClick={pauseCampaign} disabled={isActionLoading}>
+                    <Pause className="w-4 h-4 mr-1" /> {isActionLoading ? 'Updating...' : 'Pause'}
                   </Button>
                 ) : (
-                  <Button variant="outline" size="sm" onClick={resumeCampaign}>
-                    <Play className="w-4 h-4 mr-1" /> Resume
+                  <Button variant="outline" size="sm" onClick={resumeCampaign} disabled={isActionLoading}>
+                    <Play className="w-4 h-4 mr-1" /> {isActionLoading ? 'Updating...' : 'Resume'}
                   </Button>
                 )}
-                <Button variant="outline" size="sm" onClick={useStore.getState().stopCampaign} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                <Button variant="outline" size="sm" onClick={stopCampaign} disabled={isActionLoading} className="text-red-500 hover:text-red-600 hover:bg-red-50">
                   <Square className="w-4 h-4 mr-1" /> Stop
                 </Button>
               </div>

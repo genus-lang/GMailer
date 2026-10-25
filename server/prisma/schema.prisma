@@ -83,7 +83,7 @@ model Campaign {
   userId    String
   user      User         @relation(fields: [userId], references: [id])
   name      String
-  status    String       @default("DRAFT") // DRAFT, RUNNING, PAUSED, COMPLETED
+  status    String       @default("DRAFT") // DRAFT, RUNNING, PAUSED, STOPPED, COMPLETED
   subject   String?
   body      String?      @db.Text
   attachmentPath String? // Path to the uploaded PDF file
