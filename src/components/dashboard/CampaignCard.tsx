@@ -109,7 +109,7 @@ export function CampaignCard() {
           <>
             <Button
               variant="outline"
-              onClick={toggleCampaignStatus}
+              onClick={() => toggleCampaignStatus()}
               disabled={isActionLoading}
               className={`flex-1 h-10 rounded-xl font-bold text-sm border-2 ${
                 isRunning
@@ -127,7 +127,7 @@ export function CampaignCard() {
             </Button>
             <Button
               variant="outline"
-              onClick={stopCampaign}
+              onClick={() => stopCampaign()}
               disabled={isActionLoading}
               title="Stop Campaign"
               className="h-10 rounded-xl font-bold text-sm border-2 border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"

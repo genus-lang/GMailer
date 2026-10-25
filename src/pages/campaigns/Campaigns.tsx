@@ -51,15 +51,15 @@ export function Campaigns() {
               </div>
               <div className="flex gap-2">
                 {activeCampaign.status === 'Sending' ? (
-                  <Button variant="outline" size="sm" onClick={pauseCampaign} disabled={isActionLoading}>
+                  <Button variant="outline" size="sm" onClick={() => pauseCampaign()} disabled={isActionLoading}>
                     <Pause className="w-4 h-4 mr-1" /> {isActionLoading ? 'Updating...' : 'Pause'}
                   </Button>
                 ) : (
-                  <Button variant="outline" size="sm" onClick={resumeCampaign} disabled={isActionLoading}>
+                  <Button variant="outline" size="sm" onClick={() => resumeCampaign()} disabled={isActionLoading}>
                     <Play className="w-4 h-4 mr-1" /> {isActionLoading ? 'Updating...' : 'Resume'}
                   </Button>
                 )}
-                <Button variant="outline" size="sm" onClick={stopCampaign} disabled={isActionLoading} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                <Button variant="outline" size="sm" onClick={() => stopCampaign()} disabled={isActionLoading} className="text-red-500 hover:text-red-600 hover:bg-red-50">
                   <Square className="w-4 h-4 mr-1" /> Stop
                 </Button>
               </div>

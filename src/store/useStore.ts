@@ -345,10 +345,12 @@ export const useStore = create<GMailerState>((set, get) => ({
   },
 
   stopCampaign: async () => {
-    const { activeCampaign, jwtToken, isActionLoading, syncWithStorage, fetchInitialData } = get();
+    const { activeCampaign, jwtToken, isActionLoading, syncWithStorage } = get();
     if (!activeCampaign || !jwtToken || isActionLoading) return;
 
-    const confirmed = confirm(`Are you sure you want to stop campaign "${activeCampaign.name}"? All remaining unsent emails will be cancelled.`);
+    const confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function'
+      ? window.confirm(`Are you sure you want to stop campaign "${activeCampaign.name}"? All remaining unsent emails will be cancelled.`)
+      : true;
     if (!confirmed) return;
 
     set({ isActionLoading: true });
@@ -365,9 +367,8 @@ export const useStore = create<GMailerState>((set, get) => ({
         )
       }));
 
-      // Refresh campaigns from backend to ensure consistent state
-      await fetchInitialData();
-      syncWithStorage();
+      // Refresh campaigns and queue from backend to ensure consistent state
+      await syncWithStorage();
     } catch (e: any) {
       console.error("Failed to stop campaign:", e);
       alert(`Failed to stop campaign: ${e.message || 'Unknown error'}`);
