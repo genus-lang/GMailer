@@ -10,6 +10,7 @@ import { renderTemplate } from "@/background/templateEngine";
 import { getAIProvider } from "@/lib/ai/aiService";
 import { AIActionDialog } from "@/components/ui/AIActionDialog";
 import { ApiService } from "@/services/api.service";
+import { cn } from "@/lib/utils";
 
 export function CampaignBuilder() {
   const navigate = useNavigate();

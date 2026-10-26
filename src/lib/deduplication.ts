@@ -20,7 +20,7 @@ export function isDuplicate(email: string, existingContacts: Contact[]): Contact
 
 export interface DeduplicationResult {
   unique: Contact[];
-  duplicates: { contact: Contact; existingId: number }[];
+  duplicates: { contact: Contact; existingId: string | number }[];
   merged: number;
 }
 

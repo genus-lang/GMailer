@@ -197,7 +197,7 @@ export function JobInbox() {
                     <Button 
                       variant="outline" 
                       className="mt-4 gap-2" 
-                      onClick={loadInbox}
+                      onClick={() => { void loadInbox(true); }}
                       disabled={isRefreshing}
                     >
                       <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
