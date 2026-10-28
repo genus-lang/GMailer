@@ -45,8 +45,12 @@ export function Queue() {
               Live Queue 
               {activeCampaign && (
                 <span className={cn(
-                  "ml-3 text-xs px-2 py-1 rounded-full uppercase tracking-widest",
-                  activeCampaign.status === 'Sending' ? "bg-primary-light text-primary" : "bg-warning-light text-warning"
+                  "ml-3 text-xs px-2.5 py-1 rounded-full uppercase tracking-wider font-bold",
+                  activeCampaign.status === 'Sending' 
+                    ? "bg-primary-light text-primary" 
+                    : activeCampaign.status === 'Scheduled'
+                    ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
+                    : "bg-warning-light text-warning"
                 )}>
                   {activeCampaign.status}
                 </span>
@@ -69,7 +73,10 @@ export function Queue() {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="h-9 gap-2"
+                  className={cn(
+                    "h-9 gap-2 font-bold",
+                    activeCampaign.status === 'Scheduled' && "text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                  )}
                   disabled={isActionLoading}
                   onClick={toggleCampaignStatus}
                 >
@@ -77,6 +84,8 @@ export function Queue() {
                     'Updating...'
                   ) : activeCampaign.status === 'Sending' ? (
                     <><Pause className="w-4 h-4" /> Pause</>
+                  ) : activeCampaign.status === 'Scheduled' ? (
+                    <><Play className="w-4 h-4" /> Start Now</>
                   ) : (
                     <><Play className="w-4 h-4" /> Resume</>
                   )}

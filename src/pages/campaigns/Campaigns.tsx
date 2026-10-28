@@ -41,10 +41,16 @@ export function Campaigns() {
           <div className="mb-8 p-6 bg-primary-light/5 border border-primary/20 rounded-2xl">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className={`w-3 h-3 rounded-full ${activeCampaign.status === 'Sending' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                <div className={`w-3 h-3 rounded-full ${
+                  activeCampaign.status === 'Sending' ? 'bg-emerald-500 animate-pulse' :
+                  activeCampaign.status === 'Scheduled' ? 'bg-indigo-500 animate-pulse' :
+                  'bg-amber-500'
+                }`} />
                 <h3 className="font-bold text-lg">{activeCampaign.name}</h3>
                 <span className={`px-3 py-1 text-xs font-bold rounded-full ${
-                  activeCampaign.status === 'Sending' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                  activeCampaign.status === 'Sending' ? 'bg-emerald-100 text-emerald-700' :
+                  activeCampaign.status === 'Scheduled' ? 'bg-indigo-100 text-indigo-700' :
+                  'bg-amber-100 text-amber-700'
                 }`}>
                   {activeCampaign.status}
                 </span>
@@ -54,13 +60,17 @@ export function Campaigns() {
                   <Button variant="outline" size="sm" onClick={() => pauseCampaign()} disabled={isActionLoading}>
                     <Pause className="w-4 h-4 mr-1" /> {isActionLoading ? 'Updating...' : 'Pause'}
                   </Button>
+                ) : activeCampaign.status === 'Scheduled' ? (
+                  <Button variant="outline" size="sm" onClick={() => resumeCampaign()} disabled={isActionLoading} className="text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+                    <Play className="w-4 h-4 mr-1" /> {isActionLoading ? 'Updating...' : 'Start Now'}
+                  </Button>
                 ) : (
                   <Button variant="outline" size="sm" onClick={() => resumeCampaign()} disabled={isActionLoading}>
                     <Play className="w-4 h-4 mr-1" /> {isActionLoading ? 'Updating...' : 'Resume'}
                   </Button>
                 )}
                 <Button variant="outline" size="sm" onClick={() => stopCampaign()} disabled={isActionLoading} className="text-red-500 hover:text-red-600 hover:bg-red-50">
-                  <Square className="w-4 h-4 mr-1" /> Stop
+                  <Square className="w-4 h-4 mr-1" /> {activeCampaign.status === 'Scheduled' ? 'Cancel' : 'Stop'}
                 </Button>
               </div>
             </div>

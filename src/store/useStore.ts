@@ -37,9 +37,12 @@ export interface CampaignState {
   total: number;
   sent: number;
   failed: number;
-  status: 'Sending' | 'Paused' | 'Stopped' | 'Completed';
+  status: 'Sending' | 'Paused' | 'Stopped' | 'Completed' | 'Scheduled';
   nextEmailIn: string;
   createdOn: string;
+  scheduledAt?: string | null;
+  minDelay?: number;
+  maxDelay?: number;
 }
 
 export interface TemplateVersion {
@@ -62,7 +65,7 @@ export interface Template {
 export interface CampaignHistoryItem {
   id: string;
   name: string;
-  status: 'Completed' | 'Running' | 'Paused' | 'Stopped';
+  status: 'Completed' | 'Running' | 'Paused' | 'Stopped' | 'Scheduled';
   sent: number;
   total: number;
   failed: number;
@@ -238,7 +241,7 @@ export const useStore = create<GMailerState>((set, get) => ({
     if (!activeCampaign || isActionLoading) return;
     if (activeCampaign.status === 'Sending') {
       await pauseCampaign();
-    } else if (activeCampaign.status === 'Paused') {
+    } else if (activeCampaign.status === 'Paused' || activeCampaign.status === 'Scheduled') {
       await resumeCampaign();
     }
   },
@@ -256,15 +259,26 @@ export const useStore = create<GMailerState>((set, get) => ({
     if (!jwtToken) throw new Error("Not authenticated");
 
     try {
-      // 1. Send Campaign to Backend API
+      // 1. Send Campaign to Backend API with minDelay, maxDelay, and scheduledAt
       const campaign = await ApiService.post<any>('/campaigns', {
         name: payload.name,
         subject: payload.subject,
         body: payload.body || payload.bodyTemplate,
         recipients: payload.recipients.map((r: any) => r.email),
         attachmentPath: payload.attachmentPath,
-        allowResend: payload.allowResend
+        allowResend: payload.allowResend,
+        minDelay: payload.minDelay,
+        maxDelay: payload.maxDelay,
+        scheduledAt: payload.scheduledAt,
       }, jwtToken);
+
+      const isScheduled = campaign.status === 'SCHEDULED' || !!payload.scheduledAt;
+      let nextEmailText = `${payload.minDelay || 15}s`;
+      if (isScheduled && payload.scheduledAt) {
+        const diffMs = new Date(payload.scheduledAt).getTime() - Date.now();
+        const diffMin = Math.round(diffMs / 60000);
+        nextEmailText = diffMin > 60 ? `In ${Math.floor(diffMin / 60)}h ${diffMin % 60}m` : `In ${Math.max(1, diffMin)}m`;
+      }
 
       // 2. Set UI Active Campaign State
       set({
@@ -274,9 +288,12 @@ export const useStore = create<GMailerState>((set, get) => ({
           total: campaign.stats?.total || payload.recipients.length,
           sent: 0,
           failed: 0,
-          status: 'Sending',
-          nextEmailIn: 'Processing...',
-          createdOn: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          status: isScheduled ? 'Scheduled' : 'Sending',
+          nextEmailIn: nextEmailText,
+          createdOn: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          scheduledAt: payload.scheduledAt,
+          minDelay: payload.minDelay,
+          maxDelay: payload.maxDelay,
         }
       });
       
@@ -425,8 +442,8 @@ export const useStore = create<GMailerState>((set, get) => ({
         ApiService.get<any[]>('/contacts/sent-emails', token).catch(() => [])
       ]);
 
-      // Determine if there is an active running or paused campaign
-      const active = campaigns.find((c: any) => c.status === 'RUNNING' || c.status === 'PAUSED');
+      // Determine if there is an active running, paused, or scheduled campaign
+      const active = campaigns.find((c: any) => c.status === 'RUNNING' || c.status === 'PAUSED' || c.status === 'SCHEDULED');
       
       const mappedCampaigns = campaigns.map((c: any) => {
         let sentCount = c.stats?.sent || 0;
@@ -441,10 +458,11 @@ export const useStore = create<GMailerState>((set, get) => ({
            openRate = Math.max(12, Math.min(38, Math.round(sentCount * 0.4))) + "%";
         }
 
-        let displayStatus: 'Completed' | 'Running' | 'Paused' | 'Stopped' = 'Completed';
+        let displayStatus: 'Completed' | 'Running' | 'Paused' | 'Stopped' | 'Scheduled' = 'Completed';
         if (c.status === 'RUNNING') displayStatus = 'Running';
         else if (c.status === 'PAUSED') displayStatus = 'Paused';
         else if (c.status === 'STOPPED') displayStatus = 'Stopped';
+        else if (c.status === 'SCHEDULED') displayStatus = 'Scheduled';
         else if (c.status === 'COMPLETED') displayStatus = 'Completed';
 
         return {
@@ -468,8 +486,35 @@ export const useStore = create<GMailerState>((set, get) => ({
                   (e.status === 'FAILED' || e.status === 'STOPPED') ? ('Failed' as QueueStatus) : 
                   e.status === 'PROCESSING' ? ('Sending' as QueueStatus) : 
                   e.status === 'PAUSED' ? ('Paused' as QueueStatus) : ('Pending' as QueueStatus),
-          time: new Date(e.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          time: e.sendAt 
+            ? new Date(e.sendAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            : new Date(e.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }));
+
+        let nextEmailIn = '—';
+        if (active.status === 'SCHEDULED') {
+          const scheduledAtStr = active.stats?.scheduledAt;
+          if (scheduledAtStr) {
+            const diffMs = new Date(scheduledAtStr).getTime() - Date.now();
+            if (diffMs > 0) {
+              const diffMin = Math.round(diffMs / 60000);
+              const diffHours = Math.floor(diffMin / 60);
+              nextEmailIn = diffHours > 0 ? `In ${diffHours}h ${diffMin % 60}m` : `In ${Math.max(1, diffMin)}m`;
+            } else {
+              nextEmailIn = 'Starting soon...';
+            }
+          } else {
+            nextEmailIn = 'Scheduled';
+          }
+        } else if (active.status === 'RUNNING') {
+          const nextPending = (active.emails || []).find((e: any) => e.status === 'PENDING' || e.status === 'PROCESSING');
+          if (nextPending?.sendAt) {
+            const diffSec = Math.round((new Date(nextPending.sendAt).getTime() - Date.now()) / 1000);
+            nextEmailIn = diffSec > 0 ? `${diffSec}s` : 'Sending...';
+          } else {
+            nextEmailIn = 'Processing...';
+          }
+        }
         
         set({
            queueItems: mappedQueueItems,
@@ -479,9 +524,12 @@ export const useStore = create<GMailerState>((set, get) => ({
              total: active.stats?.total || (active.emails?.length || 0),
              sent: active.stats?.sent || (active.emails?.filter((e: any) => e.status === 'SENT').length || 0),
              failed: active.stats?.failed || (active.emails?.filter((e: any) => e.status === 'FAILED' || e.status === 'STOPPED').length || 0),
-             status: active.status === 'PAUSED' ? 'Paused' : 'Sending',
-             nextEmailIn: active.status === 'PAUSED' ? '—' : 'Processing...',
-             createdOn: active.createdAt
+             status: active.status === 'PAUSED' ? 'Paused' : active.status === 'SCHEDULED' ? 'Scheduled' : 'Sending',
+             nextEmailIn,
+             createdOn: active.createdAt,
+             scheduledAt: active.stats?.scheduledAt || null,
+             minDelay: active.stats?.minDelay || 15,
+             maxDelay: active.stats?.maxDelay || 30,
            },
            campaignHistory: mappedCampaigns
         });

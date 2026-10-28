@@ -32,7 +32,7 @@ export function CampaignCard() {
   const isRunning = activeCampaign.status === 'Sending';
   const isCompleted = activeCampaign.status === 'Completed';
   const isPaused = activeCampaign.status === 'Paused';
-
+  const isScheduled = activeCampaign.status === 'Scheduled';
 
   const progressPercent = activeCampaign.total > 0
     ? Math.round((activeCampaign.sent / activeCampaign.total) * 100)
@@ -46,15 +46,19 @@ export function CampaignCard() {
           <div className="flex items-center gap-2 mb-1.5">
             <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
               isRunning ? 'bg-emerald-500 animate-pulse' :
-              isCompleted ? 'bg-blue-500' : 'bg-amber-500'
+              isCompleted ? 'bg-blue-500' :
+              isScheduled ? 'bg-indigo-500 animate-pulse' : 'bg-amber-500'
             }`} />
             <span className={`text-xs font-bold ${
               isRunning ? 'text-emerald-600' :
-              isCompleted ? 'text-blue-600' : 'text-amber-600'
+              isCompleted ? 'text-blue-600' :
+              isScheduled ? 'text-indigo-600' : 'text-amber-600'
             }`}>
               {isCompleted ? 'Completed' : activeCampaign.status}
             </span>
-            <span className="text-xs text-secondary">· {progressPercent}% done</span>
+            <span className="text-xs text-secondary">
+              {isScheduled && activeCampaign.nextEmailIn ? `· Starts ${activeCampaign.nextEmailIn}` : `· ${progressPercent}% done`}
+            </span>
           </div>
           <h3 className="text-base font-black text-text truncate">{activeCampaign.name}</h3>
         </div>
@@ -80,7 +84,9 @@ export function CampaignCard() {
                 ? 'linear-gradient(to right, #3b82f6, #60a5fa)'
                 : isPaused
                 ? 'linear-gradient(to right, #f59e0b, #fbbf24)'
-                : 'linear-gradient(to right, #4f46e5, #818cf8)'
+                : isScheduled
+                ? 'linear-gradient(to right, #6366f1, #818cf8)'
+                : 'linear-gradient(to right, #10b981, #34d399)'
             }}
           />
         </div>
@@ -89,7 +95,11 @@ export function CampaignCard() {
       {/* Stats Row */}
       <div className="grid grid-cols-3 gap-3 mb-5 pb-5 border-b border-border">
         {[
-          { icon: Clock, label: "Next Email", value: isRunning ? activeCampaign.nextEmailIn : '—' },
+          { 
+            icon: Clock, 
+            label: isScheduled ? "Starts" : "Next Email", 
+            value: isRunning ? activeCampaign.nextEmailIn : (isScheduled ? (activeCampaign.nextEmailIn || 'Scheduled') : '—') 
+          },
           { icon: Users, label: "Recipients", value: activeCampaign.total },
           { icon: Calendar, label: "Created", value: activeCampaign.createdOn?.split(',')[0] || activeCampaign.createdOn },
         ].map(({ icon: Icon, label, value }, i) => (
@@ -114,6 +124,8 @@ export function CampaignCard() {
               className={`flex-1 h-10 rounded-xl font-bold text-sm border-2 ${
                 isRunning
                   ? 'border-amber-200 text-amber-700 hover:bg-amber-50'
+                  : isScheduled
+                  ? 'border-indigo-200 text-indigo-700 hover:bg-indigo-50'
                   : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
               }`}
             >
@@ -121,6 +133,8 @@ export function CampaignCard() {
                 'Updating...'
               ) : isRunning ? (
                 <><Pause className="w-4 h-4 mr-2" /> Pause</>
+              ) : isScheduled ? (
+                <><Play className="w-4 h-4 mr-2" /> Start Now</>
               ) : (
                 <><Play className="w-4 h-4 mr-2" /> Resume</>
               )}
@@ -129,7 +143,7 @@ export function CampaignCard() {
               variant="outline"
               onClick={() => stopCampaign()}
               disabled={isActionLoading}
-              title="Stop Campaign"
+              title={isScheduled ? "Cancel Campaign" : "Stop Campaign"}
               className="h-10 rounded-xl font-bold text-sm border-2 border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
             >
               <Square className="w-4 h-4" />

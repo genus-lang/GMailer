@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useStore } from "@/store/useStore";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ChevronRight, ArrowLeft, Sparkles, Building2, List, FileText } from "lucide-react";
+import { ChevronRight, ArrowLeft, Sparkles, Building2, List, FileText, Clock, Calendar, Rocket } from "lucide-react";
 import { renderTemplate } from "@/background/templateEngine"; 
 import { getAIProvider } from "@/lib/ai/aiService";
 import { AIActionDialog } from "@/components/ui/AIActionDialog";
@@ -25,8 +25,15 @@ export function CampaignBuilder() {
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
-  const [minDelay, setMinDelay] = useState(settings.minDelay || 20);
-  const [maxDelay, setMaxDelay] = useState(settings.maxDelay || 40);
+  const [minDelay, setMinDelay] = useState(settings.minDelay || 15);
+  const [maxDelay, setMaxDelay] = useState(settings.maxDelay || 30);
+  const [scheduleType, setScheduleType] = useState<'now' | 'later'>('now');
+  const [scheduledDateTime, setScheduledDateTime] = useState<string>(() => {
+    const d = new Date(Date.now() + 60 * 60 * 1000);
+    d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
   
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -129,10 +136,31 @@ export function CampaignBuilder() {
 
   const selectedContacts = contacts.filter(c => selectedContactIds.has(c.id)); 
 
-  const handleStart = async () => {
+  const handleStart = async (isScheduled: boolean = false) => {
     if (selectedContacts.length === 0) {
-      alert("No contacts available! Import some first.");
+      alert("No contacts available! Import or select some first.");
       return;
+    }
+
+    if (minDelay < 5) {
+      alert("Minimum delay must be at least 5 seconds to protect your Gmail sender reputation.");
+      return;
+    }
+
+    if (maxDelay < minDelay) {
+      alert("Maximum delay cannot be less than minimum delay.");
+      return;
+    }
+
+    const isSchedulingLater = isScheduled || scheduleType === 'later';
+    let targetScheduledIso: string | null = null;
+    if (isSchedulingLater) {
+      const scheduledDate = new Date(scheduledDateTime);
+      if (isNaN(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now()) {
+        alert("Please select a future date and time for the scheduled campaign.");
+        return;
+      }
+      targetScheduledIso = scheduledDate.toISOString();
     }
 
     // Deduplicate recipients by email to prevent double-sending
@@ -202,7 +230,8 @@ export function CampaignBuilder() {
         maxDelay,
         recipients: uniqueRecipients,
         attachmentPath: uploadedPath,
-        allowResend: effectiveAllowResend
+        allowResend: effectiveAllowResend,
+        scheduledAt: targetScheduledIso,
       });
 
       setIsUploading(false);
@@ -614,58 +643,228 @@ export function CampaignBuilder() {
 
         {/* Step 4: Settings & Review */}
         {step === 4 && (
-          <div className="max-w-xl space-y-4">
-            <h3 className="text-lg font-bold">Sending Settings</h3>
-            <p className="text-sm text-secondary mb-4">A random delay is added between each email to simulate human behavior.</p>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-secondary">Min Delay (sec)</label>
-                <Input 
-                  type="number"
-                  value={minDelay} 
-                  onChange={e => setMinDelay(Number(e.target.value))}
-                />
+          <div className="max-w-xl space-y-6">
+            <div>
+              <h3 className="text-lg font-bold text-text">Sending Settings & Timer</h3>
+              <p className="text-sm text-secondary">
+                Configure human simulation delays and choose when this campaign starts.
+              </p>
+            </div>
+
+            {/* Delay Interval Controls */}
+            <div className="p-4 bg-white border border-border rounded-xl space-y-3 shadow-xs">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-primary" />
+                <h4 className="text-sm font-bold text-text">Timer & Sending Delays</h4>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-secondary">Max Delay (sec)</label>
-                <Input 
-                  type="number"
-                  value={maxDelay} 
-                  onChange={e => setMaxDelay(Number(e.target.value))}
-                />
+              <p className="text-xs text-secondary">
+                A randomized delay is added between each email send to prevent rate-limiting and simulate natural human behavior.
+              </p>
+
+              <div className="grid grid-cols-2 gap-4 pt-1">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-secondary">Min Delay (seconds)</label>
+                  <Input 
+                    type="number"
+                    min={5}
+                    value={minDelay} 
+                    onChange={e => setMinDelay(Math.max(5, Number(e.target.value)))}
+                    className="h-9 text-sm"
+                  />
+                  <span className="text-[10px] text-muted-foreground">Recommended: &ge; 15s</span>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-secondary">Max Delay (seconds)</label>
+                  <Input 
+                    type="number"
+                    min={minDelay}
+                    value={maxDelay} 
+                    onChange={e => setMaxDelay(Math.max(minDelay, Number(e.target.value)))}
+                    className="h-9 text-sm"
+                  />
+                  <span className="text-[10px] text-muted-foreground">Recommended: &ge; 30s</span>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs text-secondary flex items-center justify-between">
+                <span>Delay window: <strong className="text-text">{minDelay}s &ndash; {maxDelay}s</strong> per email</span>
+                <span>Average: <strong className="text-primary font-bold">~{Math.round((minDelay + maxDelay) / 2)}s</strong></span>
               </div>
             </div>
 
-            <div className="mt-8 p-4 bg-primary-light/10 border border-primary/20 rounded-lg">
-              <h4 className="font-bold text-primary mb-2">Campaign Summary</h4>
-              <ul className="space-y-1 text-sm">
-                <li><strong>Name:</strong> {name}</li>
-                <li><strong>Recipients:</strong> {selectedContacts.length}</li>
-                <li><strong>Estimated Time:</strong> ~{Math.round((selectedContacts.length * ((minDelay + maxDelay) / 2)) / 60)} minutes</li>
-              </ul>
+            {/* Campaign Scheduling Mode */}
+            <div className="p-4 bg-white border border-border rounded-xl space-y-4 shadow-xs">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-indigo-600" />
+                <h4 className="text-sm font-bold text-text">Campaign Start Schedule</h4>
+              </div>
+
+              {/* Mode Switcher */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setScheduleType('now')}
+                  className={cn(
+                    "py-2 rounded-md transition-all flex items-center justify-center gap-1.5",
+                    scheduleType === 'now' 
+                      ? "bg-white shadow-sm text-primary" 
+                      : "text-secondary hover:text-text"
+                  )}
+                >
+                  <Rocket className="w-3.5 h-3.5" />
+                  Send Immediately
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScheduleType('later')}
+                  className={cn(
+                    "py-2 rounded-md transition-all flex items-center justify-center gap-1.5",
+                    scheduleType === 'later' 
+                      ? "bg-white shadow-sm text-indigo-600" 
+                      : "text-secondary hover:text-text"
+                  )}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  Schedule for Later
+                </button>
+              </div>
+
+              {scheduleType === 'later' && (
+                <div className="space-y-3 pt-1 border-t border-border">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <label className="text-xs font-semibold text-secondary">Select Start Date & Time</label>
+                    {/* Quick presets */}
+                    <div className="flex gap-1 flex-wrap">
+                      {[
+                        { label: "+15m", mins: 15 },
+                        { label: "+1h", mins: 60 },
+                        { label: "+3h", mins: 180 },
+                        { label: "Tomorrow 9 AM", tomorrowHour: 9 },
+                        { label: "Tomorrow 2 PM", tomorrowHour: 14 }
+                      ].map((preset, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            const d = new Date();
+                            if (preset.tomorrowHour !== undefined) {
+                              d.setDate(d.getDate() + 1);
+                              d.setHours(preset.tomorrowHour, 0, 0, 0);
+                            } else {
+                              d.setMinutes(d.getMinutes() + preset.mins!);
+                            }
+                            const pad = (n: number) => n.toString().padStart(2, '0');
+                            setScheduledDateTime(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+                          }}
+                          className="px-2 py-0.5 text-[11px] font-medium bg-gray-100 hover:bg-gray-200 text-secondary hover:text-text rounded transition-colors"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Input 
+                    type="datetime-local"
+                    value={scheduledDateTime}
+                    min={(() => {
+                      const d = new Date();
+                      const pad = (n: number) => n.toString().padStart(2, '0');
+                      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                    })()}
+                    onChange={e => setScheduledDateTime(e.target.value)}
+                    className="h-9 text-sm bg-white"
+                  />
+
+                  {/* Scheduled info badge */}
+                  {(() => {
+                    const sched = new Date(scheduledDateTime);
+                    const isValid = !isNaN(sched.getTime()) && sched.getTime() > Date.now();
+                    if (!isValid) {
+                      return (
+                        <p className="text-xs text-red-500 font-medium">
+                          Please pick a date and time in the future.
+                        </p>
+                      );
+                    }
+                    const diffMs = sched.getTime() - Date.now();
+                    const diffMin = Math.round(diffMs / 60000);
+                    const diffHours = Math.floor(diffMin / 60);
+                    const diffDays = Math.floor(diffHours / 24);
+                    const timeString = diffDays > 0 
+                      ? `${diffDays}d ${diffHours % 24}h` 
+                      : diffHours > 0 
+                      ? `${diffHours}h ${diffMin % 60}m` 
+                      : `${Math.max(1, diffMin)} minutes`;
+
+                    return (
+                      <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-lg text-xs text-indigo-900 flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                        <div>
+                          <span>Campaign will start automatically in <strong>{timeString}</strong></span>
+                          <span className="block text-[11px] text-indigo-700/80 mt-0.5">
+                            {sched.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} at {sched.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
 
-            <div className="flex gap-4 mt-8 items-center">
+            {/* Campaign Overview Card */}
+            <div className="p-4 bg-primary-light/10 border border-primary/20 rounded-xl space-y-2">
+              <h4 className="font-bold text-sm text-primary">Campaign Overview</h4>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-secondary block">Campaign:</span>
+                  <span className="font-semibold text-text truncate block">{name}</span>
+                </div>
+                <div>
+                  <span className="text-secondary block">Recipients:</span>
+                  <span className="font-semibold text-text">{selectedContacts.length.toLocaleString()} contacts</span>
+                </div>
+                <div>
+                  <span className="text-secondary block">Delay Window:</span>
+                  <span className="font-semibold text-text">{minDelay}s &ndash; {maxDelay}s per email</span>
+                </div>
+                <div>
+                  <span className="text-secondary block">Total Send Time:</span>
+                  <span className="font-semibold text-text">~{Math.round((selectedContacts.length * ((minDelay + maxDelay) / 2)) / 60)} minutes</span>
+                </div>
+                <div className="col-span-2 pt-1 border-t border-primary/10 flex items-center justify-between">
+                  <span className="text-secondary">Execution Plan:</span>
+                  <span className="font-bold text-primary">
+                    {scheduleType === 'later' ? `Scheduled for ${new Date(scheduledDateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}` : 'Immediate Start'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex gap-4 pt-2 items-center">
               <Button variant="outline" onClick={() => setStep(3)}>Back</Button>
               <div className="flex-1" />
-              <Button 
-                variant="outline" 
-                className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                onClick={() => {
-                  if (userPlan === 'FREE') {
-                    setUpgradeDialogOpen(true, "Campaign scheduling is a Plus feature. Upgrade for ₹25/month.");
-                  } else {
-                    // Logic for scheduling would go here in the future
-                    alert("Campaign scheduled for later!");
-                  }
-                }}
-              >
-                Schedule Campaign
-              </Button>
-              <Button onClick={handleStart} disabled={isUploading} className="bg-success text-white hover:bg-success/90">
-                {isUploading ? "Uploading..." : "Start Campaign Now"}
-              </Button>
+              {scheduleType === 'later' ? (
+                <Button 
+                  onClick={() => handleStart(true)} 
+                  disabled={isUploading} 
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold gap-2 px-6 shadow-sm"
+                >
+                  <Calendar className="w-4 h-4" />
+                  {isUploading ? "Scheduling..." : "Schedule Campaign"}
+                </Button>
+              ) : (
+                <Button 
+                  onClick={() => handleStart(false)} 
+                  disabled={isUploading} 
+                  className="bg-success hover:bg-success/90 text-white font-bold gap-2 px-6 shadow-sm"
+                >
+                  <Rocket className="w-4 h-4" />
+                  {isUploading ? "Starting..." : "Start Campaign Now"}
+                </Button>
+              )}
             </div>
           </div>
         )}

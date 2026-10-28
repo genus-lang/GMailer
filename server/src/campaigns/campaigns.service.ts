@@ -27,7 +27,7 @@ export class CampaignsService {
   }
 
   async create(userId: string, data: any) {
-    const { name, subject, body, recipients, attachmentPath, allowResend } = data; // recipients is array of emails
+    const { name, subject, body, recipients, attachmentPath, allowResend, minDelay = 15, maxDelay = 30, scheduledAt } = data; // recipients is array of emails
 
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       throw new BadRequestException('No recipients provided for the campaign.');
@@ -56,6 +56,21 @@ export class CampaignsService {
       );
     }
 
+    const parsedMinDelay = Math.max(5, Number(minDelay) || 15);
+    const parsedMaxDelay = Math.max(parsedMinDelay, Number(maxDelay) || 30);
+
+    let isScheduled = false;
+    let scheduledDate: Date | null = null;
+    if (scheduledAt) {
+      const parsed = new Date(scheduledAt);
+      if (!isNaN(parsed.getTime()) && parsed.getTime() > Date.now()) {
+        isScheduled = true;
+        scheduledDate = parsed;
+      }
+    }
+
+    const initialStatus = isScheduled ? 'SCHEDULED' : 'RUNNING';
+
     const campaign = await this.prisma.campaign.create({
       data: {
         userId,
@@ -63,22 +78,43 @@ export class CampaignsService {
         subject,
         body,
         attachmentPath,
-        status: 'RUNNING',
-        stats: { total: finalRecipients.length, sent: 0, failed: 0, opened: 0 },
+        status: initialStatus,
+        stats: {
+          total: finalRecipients.length,
+          sent: 0,
+          failed: 0,
+          opened: 0,
+          minDelay: parsedMinDelay,
+          maxDelay: parsedMaxDelay,
+          scheduledAt: scheduledDate ? scheduledDate.toISOString() : null,
+        },
       },
     });
 
-    for (const email of finalRecipients) {
+    let cumulativeDelayMs = isScheduled ? Math.max(0, scheduledDate!.getTime() - Date.now()) : 0;
+
+    for (let i = 0; i < finalRecipients.length; i++) {
+      const email = finalRecipients[i];
+      if (i > 0) {
+        const randomSeconds = Math.floor(Math.random() * (parsedMaxDelay - parsedMinDelay + 1)) + parsedMinDelay;
+        cumulativeDelayMs += randomSeconds * 1000;
+      }
+
+      const sendAt = new Date(Date.now() + cumulativeDelayMs);
+
       await this.queueService.addEmailToQueue(
         userId,
         campaign.id,
         email,
         subject,
         body,
-        attachmentPath
+        attachmentPath,
+        cumulativeDelayMs,
+        sendAt
       );
     }
 
+    this.logger.log(`[CampaignsService] Created campaign ${campaign.id} (${initialStatus}) for user ${userId} with ${finalRecipients.length} recipients. Initial delay: ${cumulativeDelayMs}ms total span.`);
     return campaign;
   }
 
@@ -95,8 +131,8 @@ export class CampaignsService {
       return campaign;
     }
 
-    if (campaign.status !== 'RUNNING') {
-      throw new BadRequestException(`Cannot pause campaign with status "${campaign.status}". Only RUNNING campaigns can be paused.`);
+    if (campaign.status !== 'RUNNING' && campaign.status !== 'SCHEDULED') {
+      throw new BadRequestException(`Cannot pause campaign with status "${campaign.status}". Only RUNNING or SCHEDULED campaigns can be paused.`);
     }
 
     // 1. Atomically update Campaign status to PAUSED in DB
@@ -131,8 +167,8 @@ export class CampaignsService {
       return campaign;
     }
 
-    if (campaign.status !== 'PAUSED') {
-      throw new BadRequestException(`Cannot resume campaign with status "${campaign.status}". Only PAUSED campaigns can be resumed.`);
+    if (campaign.status !== 'PAUSED' && campaign.status !== 'SCHEDULED') {
+      throw new BadRequestException(`Cannot resume/start campaign with status "${campaign.status}". Only PAUSED or SCHEDULED campaigns can be resumed.`);
     }
 
     // 1. Find all remaining unsent emails
@@ -141,6 +177,7 @@ export class CampaignsService {
         campaignId: id,
         status: { in: ['PAUSED', 'PENDING'] },
       },
+      orderBy: { sendAt: 'asc' }
     });
 
     if (unsentEmails.length === 0) {
@@ -152,20 +189,35 @@ export class CampaignsService {
       return completed;
     }
 
+    // If campaign was previously scheduled with delayed jobs, remove old jobs before re-queueing
+    await this.queueService.removeCampaignJobs(id);
+
     // 2. Atomically update Campaign status to RUNNING
     const updated = await this.prisma.campaign.update({
       where: { id },
       data: { status: 'RUNNING' },
     });
 
-    // 3. Update unsent emails from PAUSED back to PENDING
+    // 3. Update unsent emails back to PENDING
     await this.prisma.emailQueue.updateMany({
-      where: { campaignId: id, status: 'PAUSED' },
+      where: { campaignId: id, status: { in: ['PAUSED', 'PENDING'] } },
       data: { status: 'PENDING' },
     });
 
-    // 4. Re-queue only the remaining unsent emails into BullMQ
-    for (const emailRecord of unsentEmails) {
+    // 4. Re-queue unsent emails with fresh delays based on campaign's minDelay and maxDelay
+    const stats: any = campaign.stats || {};
+    const minDelay = Math.max(5, Number(stats.minDelay) || 15);
+    const maxDelay = Math.max(minDelay, Number(stats.maxDelay) || 30);
+
+    let cumulativeDelayMs = 0;
+    for (let i = 0; i < unsentEmails.length; i++) {
+      const emailRecord = unsentEmails[i];
+      if (i > 0) {
+        const randomSeconds = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        cumulativeDelayMs += randomSeconds * 1000;
+      }
+      const sendAt = new Date(Date.now() + cumulativeDelayMs);
+
       await this.queueService.addExistingEmailToQueue(
         userId,
         emailRecord.id,
@@ -174,10 +226,12 @@ export class CampaignsService {
         campaign.subject || '',
         campaign.body || '',
         campaign.attachmentPath || undefined,
+        cumulativeDelayMs,
+        sendAt,
       );
     }
 
-    this.logger.log(`[CampaignsService] Campaign ${id} resumed by user ${userId}. Re-queued ${unsentEmails.length} unsent emails.`);
+    this.logger.log(`[CampaignsService] Campaign ${id} resumed/started by user ${userId}. Re-queued ${unsentEmails.length} unsent emails with delays.`);
     return updated;
   }
 

@@ -68,8 +68,22 @@ export class EmailQueueProcessor extends WorkerHost {
       return { paused: true, reason: 'Campaign is paused' };
     }
 
-    // Guard against any non-RUNNING state
-    if (queueItem.campaign.status !== 'RUNNING') {
+    // Handle SCHEDULED campaigns
+    if (queueItem.campaign.status === 'SCHEDULED') {
+      const stats: any = queueItem.campaign.stats || {};
+      const scheduledAtTime = stats.scheduledAt ? new Date(stats.scheduledAt).getTime() : 0;
+      if (Date.now() >= scheduledAtTime) {
+        // Transition campaign to RUNNING once scheduled start time has arrived
+        await this.prisma.campaign.update({
+          where: { id: currentCampaignId },
+          data: { status: 'RUNNING' }
+        });
+        this.logger.log(`[QueueProcessor] Scheduled campaign ${currentCampaignId} reached start time (${stats.scheduledAt}). Transitioned to RUNNING.`);
+      } else {
+        this.logger.log(`[QueueProcessor] Job ${job.id}: Campaign ${currentCampaignId} is SCHEDULED for ${stats.scheduledAt}. Current time is before schedule.`);
+        return { scheduled: true, reason: 'Waiting for scheduled time' };
+      }
+    } else if (queueItem.campaign.status !== 'RUNNING') {
       this.logger.log(`[QueueProcessor] Job ${job.id}: Campaign ${currentCampaignId} is not RUNNING (${queueItem.campaign.status}). Halting.`);
       return { skipped: true, reason: queueItem.campaign.status };
     }
@@ -90,11 +104,11 @@ export class EmailQueueProcessor extends WorkerHost {
         throw new Error('User not found or missing Google Refresh Token');
       }
 
-      // 4. Add human sending delay with 1.5s sliced checks for Pause / Stop
-      const delayMs = Math.floor(Math.random() * (45000 - 20000 + 1) + 20000);
-      this.logger.log(`[QueueProcessor] Job ${job.id}: Delaying ${delayMs}ms before send to simulate human behavior...`);
+      // 4. Subtle human sending jitter (1.5s - 3s) with Pause / Stop check
+      const delayMs = Math.floor(Math.random() * 1500) + 1500;
+      this.logger.log(`[QueueProcessor] Job ${job.id}: Pre-send jitter ${delayMs}ms before send...`);
       
-      const checkIntervalMs = 1500;
+      const checkIntervalMs = 1000;
       let elapsedMs = 0;
       while (elapsedMs < delayMs) {
         const sleepTime = Math.min(checkIntervalMs, delayMs - elapsedMs);
@@ -223,8 +237,8 @@ export class EmailQueueProcessor extends WorkerHost {
       stats.failed = failedCount;
 
       const isCompleted = pendingCount === 0 && pausedCount === 0;
-      // Only transition to COMPLETED if campaign is currently RUNNING and nothing is left
-      const newStatus = (isCompleted && campaign.status === 'RUNNING') ? 'COMPLETED' : campaign.status;
+      // Only transition to COMPLETED if campaign is currently RUNNING or SCHEDULED and nothing is left
+      const newStatus = (isCompleted && (campaign.status === 'RUNNING' || campaign.status === 'SCHEDULED')) ? 'COMPLETED' : campaign.status;
 
       await this.prisma.campaign.update({
         where: { id: campaignId },

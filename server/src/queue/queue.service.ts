@@ -19,8 +19,10 @@ export class QueueService {
     subject: string,
     body: string,
     attachmentPath?: string,
+    delayMs: number = 0,
+    sendAt: Date = new Date(),
   ) {
-    // 1. Create DB Record
+    // 1. Create DB Record with sendAt
     const emailQueueRecord = await this.prisma.emailQueue.create({
       data: {
         campaignId,
@@ -28,10 +30,11 @@ export class QueueService {
         toEmail,
         attachmentPath,
         status: 'PENDING',
+        sendAt,
       },
     });
 
-    // 2. Add to BullMQ
+    // 2. Add to BullMQ with delay
     await this.emailQueue.add(
       'send-email',
       {
@@ -44,6 +47,7 @@ export class QueueService {
         attachmentPath,
       },
       {
+        delay: delayMs,
         attempts: 3,
         backoff: {
           type: 'exponential',
@@ -54,7 +58,7 @@ export class QueueService {
       },
     );
 
-    this.logger.log(`[QueueService] Added email to queue for ${toEmail} (Campaign: ${campaignId}, QueueId: ${emailQueueRecord.id})`);
+    this.logger.log(`[QueueService] Added email to queue for ${toEmail} (Campaign: ${campaignId}, Delay: ${delayMs}ms, SendAt: ${sendAt.toISOString()})`);
     return emailQueueRecord;
   }
 
@@ -66,7 +70,16 @@ export class QueueService {
     subject: string,
     body: string,
     attachmentPath?: string,
+    delayMs: number = 0,
+    sendAt?: Date,
   ) {
+    if (sendAt) {
+      await this.prisma.emailQueue.update({
+        where: { id: emailQueueId },
+        data: { sendAt, status: 'PENDING' },
+      });
+    }
+
     await this.emailQueue.add(
       'send-email',
       {
@@ -79,6 +92,7 @@ export class QueueService {
         attachmentPath,
       },
       {
+        delay: delayMs,
         attempts: 3,
         backoff: {
           type: 'exponential',
@@ -89,7 +103,7 @@ export class QueueService {
       },
     );
 
-    this.logger.log(`[QueueService] Re-queued existing email for ${toEmail} (Campaign: ${campaignId}, QueueId: ${emailQueueId})`);
+    this.logger.log(`[QueueService] Re-queued existing email for ${toEmail} (Campaign: ${campaignId}, Delay: ${delayMs}ms, QueueId: ${emailQueueId})`);
   }
 
   async removeCampaignJobs(campaignId: string): Promise<number> {
