@@ -179,6 +179,8 @@ const defaultSettings: SettingsState = {
   userPlan: 'FREE'
 };
 
+let isSyncing = false;
+
 export const useStore = create<GMailerState>((set, get) => ({
   isConnected: false,
   userEmail: null,
@@ -221,16 +223,30 @@ export const useStore = create<GMailerState>((set, get) => ({
   },
 
   disconnect: () => {
-    if (typeof chrome !== 'undefined' && chrome.identity) {
-      chrome.identity.getAuthToken({ interactive: false }, (token: any) => {
-        if (token) {
-          chrome.identity.removeCachedAuthToken({ token: typeof token === 'string' ? token : token.token }, () => {});
-          const tokenStr = typeof token === 'string' ? token : token.token;
-          fetch(`https://accounts.google.com/o/oauth2/revoke?token=${tokenStr}`).catch(() => {});
-        }
-      });
+    if (typeof chrome !== 'undefined') {
+      if (chrome.identity) {
+        chrome.identity.getAuthToken({ interactive: false }, (token: any) => {
+          if (token) {
+            chrome.identity.removeCachedAuthToken({ token: typeof token === 'string' ? token : token.token }, () => {});
+            const tokenStr = typeof token === 'string' ? token : token.token;
+            fetch(`https://accounts.google.com/o/oauth2/revoke?token=${tokenStr}`).catch(() => {});
+          }
+        });
+      }
+      if (chrome.storage && chrome.storage.local) {
+        chrome.storage.local.remove(['jwtToken', 'googleAccessToken']);
+      }
     }
-    set({ isConnected: false, userEmail: null, authToken: null });
+    set({
+      isConnected: false,
+      jwtToken: null,
+      authToken: null,
+      userEmail: null,
+      userName: null,
+      userPicture: null,
+      activeCampaign: null,
+      queueItems: []
+    });
   },
   
   activeCampaign: null,
@@ -399,26 +415,35 @@ export const useStore = create<GMailerState>((set, get) => ({
   },
   
   syncWithStorage: async () => {
-    let token = get().jwtToken;
-    
-    // Attempt to restore session from chrome storage
-    if (typeof chrome !== 'undefined' && chrome.storage) {
-      const stored = await new Promise<any>((resolve) => {
-        chrome.storage.local.get(['jwtToken', 'googleAccessToken'], (result) => resolve(result || {}));
-      });
-      if (stored.jwtToken) {
-        token = stored.jwtToken;
-        set({ jwtToken: token, isConnected: true, authToken: stored.googleAccessToken || null });
-      }
-    }
-
-    if (!token) return;
+    if (isSyncing) return;
+    isSyncing = true;
 
     try {
+      let token = get().jwtToken;
+      
+      // Attempt to restore session from chrome storage
+      if (typeof chrome !== 'undefined' && chrome.storage) {
+        const stored = await new Promise<any>((resolve) => {
+          chrome.storage.local.get(['jwtToken', 'googleAccessToken'], (result) => resolve(result || {}));
+        });
+        if (stored.jwtToken) {
+          token = stored.jwtToken;
+          set({ jwtToken: token, authToken: stored.googleAccessToken || null });
+        }
+      }
+
+      if (!token) {
+        if (get().isConnected) {
+          set({ isConnected: false });
+        }
+        return;
+      }
+
       // 1. Fetch User Data (Plan, Settings)
       const userData = await ApiService.get<any>('/auth/me', token);
       if (userData) {
          set({ 
+           isConnected: true,
            userPlan: userData.plan, 
            userEmail: userData.email,
            userName: userData.name || null,
