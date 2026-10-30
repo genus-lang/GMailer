@@ -3,7 +3,7 @@ import { Features, PlanType, hasFeature } from '../shared/features';
 import { normalizePlan, PLANS } from '../lib/plans';
 import { AuthService } from '../services/auth.service';
 import { SubscriptionService } from '../services/subscription.service';
-import { ApiService } from '../services/api.service';
+import { ApiService, ApiError } from '../services/api.service';
 
 import premiumContactsData from '../data/premiumContacts.json';
 
@@ -634,7 +634,14 @@ export const useStore = create<GMailerState>((set, get) => ({
       }
 
     } catch (e) {
-      console.error("Failed to sync with Backend API:", e);
+      // If the token is expired or invalid (401/403), silently disconnect so the
+      // user is prompted to log in again rather than seeing a noisy console error.
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        console.warn('[syncWithStorage] Token expired or invalid — disconnecting.');
+        get().disconnect();
+      } else {
+        console.error("Failed to sync with Backend API:", e);
+      }
     }
   },
 

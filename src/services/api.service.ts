@@ -1,5 +1,13 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+/** Custom error that carries the HTTP status code so callers can detect 401/403 etc. */
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export const ApiService = {
   async get<T>(endpoint: string, token?: string | null): Promise<T> {
     console.log(`[API] GET ${endpoint}`);
@@ -21,7 +29,7 @@ export const ApiService = {
         const errorData = await response.json();
         errorMsg = errorData.message || errorData.error || response.statusText;
       } catch (e) {}
-      throw new Error(`API Error: ${errorMsg}`);
+      throw new ApiError(`API Error: ${errorMsg}`, response.status);
     }
 
     return await response.json();
@@ -47,7 +55,7 @@ export const ApiService = {
         const errorData = await response.json();
         errorMsg = errorData.message || errorData.error || response.statusText;
       } catch (e) {}
-      throw new Error(`API Error: ${errorMsg}`);
+      throw new ApiError(`API Error: ${errorMsg}`, response.status);
     }
 
     return await response.json();
@@ -72,7 +80,7 @@ export const ApiService = {
         const errorData = await response.json();
         errorMsg = errorData.message || errorData.error || response.statusText;
       } catch (e) {}
-      throw new Error(`API Error: ${errorMsg}`);
+      throw new ApiError(`API Error: ${errorMsg}`, response.status);
     }
 
     return await response.json();
@@ -97,7 +105,7 @@ export const ApiService = {
         const errorData = await response.json();
         errorMsg = errorData.message || errorData.error || response.statusText;
       } catch (e) {}
-      throw new Error(`API Error: ${errorMsg}`);
+      throw new ApiError(`API Error: ${errorMsg}`, response.status);
     }
 
     return await response.json();
