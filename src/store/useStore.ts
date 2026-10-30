@@ -658,15 +658,24 @@ export const useStore = create<GMailerState>((set, get) => ({
         set({ templates: customTemplates });
       }
 
-    } catch (e) {
-      // If the token is expired or invalid (401/403), silently disconnect so the
-      // user is prompted to log in again rather than seeing a noisy console error.
-      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-        console.warn('[syncWithStorage] Token expired or invalid — disconnecting.');
+    } catch (e: any) {
+      // If the token is expired or invalid (401/403 or Unauthorized), disconnect and clear storage
+      // so the user is cleanly prompted to log in again rather than getting stuck in an infinite error loop.
+      const isUnauthorized = 
+        (e instanceof ApiError && (e.status === 401 || e.status === 403)) ||
+        e?.status === 401 ||
+        e?.status === 403 ||
+        e?.statusCode === 401 ||
+        (typeof e?.message === 'string' && (e.message.includes('Unauthorized') || e.message.includes('401')));
+
+      if (isUnauthorized) {
+        console.warn('[syncWithStorage] Token expired or invalid — clearing session and disconnecting.');
         get().disconnect();
       } else {
         console.error("Failed to sync with Backend API:", e);
       }
+    } finally {
+      isSyncing = false;
     }
   },
 
